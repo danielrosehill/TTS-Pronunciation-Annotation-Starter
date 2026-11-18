@@ -117,11 +117,15 @@ function syncModeUi() {
 }
 
 // ---------- screen queue ----------
+// Runs with at least one Fail anywhere in the screen. Computed once per queue build, so a run failed mid-session drops
+// out from the next sentence on, not from under the current one.
+function failedRuns() { return new Set([...S.screen.values()].filter((r) => r.verdict === "fail").map((r) => r.run)); }
 function buildQueue() {
   const q = [];
   if (S.mode === "compare") {
     for (const s of S.data.sentences) {
-      let rs = runs().filter((m) => m.clips[s.id]).map((m) => m.slug);
+      // Daniel, 2026-11-18: "I don't need to keep hearing the failure voices because we know that they fail."
+      let rs = runs().filter((m) => m.clips[s.id] && (!S.skipFailed || !failedRuns().has(m.slug) || S.screen.has(key(m.slug, s.id)))).map((m) => m.slug);
       if (S.blind) rs = shuffled(rs, S.evalId + s.id);
       rs.forEach((r, i) => q.push({ run: r, sid: s.id, group: s.id, idx: i, of: rs.length }));
     }
@@ -138,12 +142,20 @@ const letter = (i) => (i < 26 ? String.fromCharCode(65 + i) : "V" + (i + 1));
 const isBlind = () => S.mode === "compare" && S.blind;
 const voiceLabel = (c) => (isBlind() ? `Voice ${letter(c.idx)}` : runBy(c.run).name);
 function voiceSub(c) { if (isBlind()) return "Name hidden until you save"; const inp = runBy(c.run).run?.input; return inp ? `Input: ${inp === "nikud" ? "given the nikud" : "plain text (infers the vowels)"}` : ""; }
+// Measured, not judged (manifest `metrics[sid]`, e.g. from a clip_metrics script): pace, level, clipping, pauses.
+function metricLine(m, sid) {
+  const x = m?.metrics?.[sid]; if (!x) return "";
+  const pct = (v) => (v > 0 ? "+" : "") + Math.round(v * 100) + "%";
+  return [x.pace_vs_median != null && `pace ${pct(x.pace_vs_median)} vs median`, x.lufs != null && `${x.lufs} LUFS`,
+    x.true_peak != null && `peak ${x.true_peak} dBTP${x.clipped ? " ⚠ clipped" : ""}`,
+    x.pauses ? `${x.pauses} pause${x.pauses > 1 ? "s" : ""} (longest ${x.longest_pause_s} s)` : null].filter(Boolean).join(" · ");
+}
 // How and when the clip was made (manifest run fields `generated`, `generated_via`); hidden in blind mode, since the route
 // (an API, a GPU) can give the voice away.
 function voiceProv(c) {
   if (isBlind()) return "";
   const r = runBy(c.run).run || {};
-  return [r.generated && `Generated ${r.generated}`, r.generated_via && `via ${r.generated_via}`].filter(Boolean).join(" · ");
+  return [r.generated && `Generated ${r.generated}`, r.generated_via && `via ${r.generated_via}`, metricLine(runBy(c.run), c.sid)].filter(Boolean).join(" · ");
 }
 
 // ---------- words and reference ----------
@@ -412,6 +424,12 @@ function go(delta, doSave) {
   if (doSave && !S.draft.verdict && VN.done.has(key(cur().run, cur().sid))) { S.dirty = false; }
   else if (doSave) { if (!saveScreen()) return; }
   else if (S.dirty && hasContent(S.draft) && !screenValid(S.draft)) saveScreen();
+  const nx = S.queue[S.pos + delta];
+  if (nx && S.skipFailed && S.mode === "compare" && delta > 0 && nx.group !== cur().group) { // new sentence: drop voices failed so far
+    buildQueue();
+    const i = S.queue.findIndex((x) => x.group === nx.group);
+    if (i >= 0) { openClip(i); return; }
+  }
   if (S.pos + delta >= S.queue.length) { toast("That was the last clip 🎉 Next: 2 · Rank", 2500); renderClip(); return; }
   openClip(S.pos + delta);
 }
@@ -698,8 +716,8 @@ function toast(msg, ms = 1500) { const t = $("toast"); t.textContent = msg; t.hi
 // ---------- events ----------
 function start() {
   S.mode = document.querySelector("input[name=mode]:checked").value;
-  S.blind = $("blind").checked; S.voice = $("voicePick").value;
-  LS("eval", S.evalId); LS("mode", S.mode); LS("blind", S.blind); LS("voice", S.voice);
+  S.blind = $("blind").checked; S.skipFailed = $("skipFailed").checked; S.voice = $("voicePick").value;
+  LS("eval", S.evalId); LS("mode", S.mode); LS("blind", S.blind); LS("skipFailed", S.skipFailed); LS("voice", S.voice);
   buildQueue();
   const saved = LS("pos." + S.evalId + "." + S.mode + (S.mode === "voice" ? "." + S.voice : ""));
   const firstOpen = S.queue.findIndex((x) => !S.screen.has(key(x.run, x.sid)));
@@ -853,6 +871,7 @@ function onKey(e) {
   wire();
   const m = LS("mode"); if (m) document.querySelector(`input[name=mode][value=${m}]`).checked = true;
   const b = LS("blind"); if (b != null) $("blind").checked = b;
+  const sf = LS("skipFailed"); if (sf != null) $("skipFailed").checked = sf;
   S.voice = LS("voice");
   syncModeUi(); renderOutbox(); tab("start");
   try { await loadEvals(); if (S.evalId) await loadEval(); } catch (e) { $("evalList").innerHTML = `<div class="banner">Couldn't load: ${esc(e.message)}</div>`; }

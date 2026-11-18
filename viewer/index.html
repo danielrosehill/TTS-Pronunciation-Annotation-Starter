@@ -86,6 +86,14 @@ async function loadEval(id) {
   render();
 }
 
+// Measured, not judged (manifest `metrics[sid]`, e.g. from a clip_metrics script): pace, level, clipping, pauses.
+function metricLine(m, sid) {
+  const x = m?.metrics?.[sid]; if (!x) return "";
+  const pct = (v) => (v > 0 ? "+" : "") + Math.round(v * 100) + "%";
+  return [x.pace_vs_median != null && `pace ${pct(x.pace_vs_median)} vs median`, x.lufs != null && `${x.lufs} LUFS`,
+    x.true_peak != null && `peak ${x.true_peak} dBTP${x.clipped ? " ⚠ clipped" : ""}`,
+    x.pauses ? `${x.pauses} pause${x.pauses > 1 ? "s" : ""} (longest ${x.longest_pause_s} s)` : null].filter(Boolean).join(" · ");
+}
 function card(x) {
   const m = D.models.find((m) => m.slug === x.run) || { name: x.run, clips: {}, run: {} };
   const s = D.sentences.find((s) => s.id === x.sentence) || {};
@@ -102,7 +110,7 @@ function card(x) {
   return `<div class="card">
     <div class="head"><div><span class="voice">${esc(m.name)}</span> <span class="meta">· ${m.run?.input === "nikud" ? "given the nikud" : "plain text"}${m.run?.generated_via ? " · " + esc(m.run.generated_via) : ""}</span></div>
       <div><span class="verdict ${v}">${v === "none" ? "not screened" : v.toUpperCase()}</span></div></div>
-    <div class="he">${esc(s.text_nikud || s.text)}</div><div class="gloss">${esc(x.sentence)} · ${esc(s.english)}</div>
+    <div class="he">${esc(s.text_nikud || s.text)}</div><div class="gloss">${esc(x.sentence)} · ${esc(s.english)}</div>${metricLine(m, x.sentence) ? `<div class="meta">Measured: ${esc(metricLine(m, x.sentence))}</div>` : ""}
     ${clip ? `<div class="row"><div class="lbl">Clip</div><audio controls preload="none" src="${clip}"></audio></div>` : ""}
     ${(a.fail_reasons || []).length || a.gender ? `<div class="row"><div class="lbl">Annotation</div><div>${(a.fail_reasons || []).map((r) => `<span class="chip">${esc(r)}</span>`).join("")}${a.gender ? `<span class="chip">voice: ${esc(a.gender)}</span>` : ""}</div></div>` : ""}
     ${a.note ? `<div class="row"><div class="lbl">Note</div><div class="note">${esc(a.note)}</div></div>` : ""}
