@@ -10,8 +10,9 @@
 <header class="top">
   <div class="brand">🎧 <span id="appTitle">TTS pronunciation annotation</span><span id="annotatorName" class="annotator"></span><span id="syncState" class="annotator" title="Saved on the server at once; copied to the dataset in the background"></span></div>
   <nav>
-    <button data-tab="rate" class="tab on" title="Pass 1: screen each clip pass / fail">1 · Screen</button>
-    <button data-tab="rank" class="tab" title="Pass 2: blind pairwise preference among passing clips">2 · Rank</button>
+    <button data-tab="board" class="tab" title="Where every voice is: screening, arena or out">Board</button>
+    <button data-tab="rate" class="tab on" title="Stage 1: every new voice gets a pass or fail">1 · Screening</button>
+    <button data-tab="rank" class="tab" title="Stage 2: voices that passed screening meet head to head, blind">2 · Arena</button>
     <button data-tab="results" class="tab">Results</button>
     <button data-tab="start" class="tab">Evaluations</button>
     <button id="helpBtn" class="ghost" title="Help and keyboard shortcuts (?)">?</button>
@@ -134,6 +135,11 @@
     </div>
   </section>
 
+  <section id="board" hidden>
+    <p class="mini">Each voice graduates: new candidates start in <b>Screening</b> (a pass or fail per clip); a voice that
+      passes and never fails moves to the <b>Arena</b> (blind head to head); the first fail sends it <b>Out</b>, with the reason kept.</p>
+    <div id="boardCols" class="board"></div>
+  </section>
   <section id="results" hidden>
     <div class="res-head">
       <h2 id="resTitle">Results</h2>

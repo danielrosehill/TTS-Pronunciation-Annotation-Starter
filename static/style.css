@@ -224,3 +224,11 @@ body.rtl .syls { direction: ltr; }
 .annotator { color: var(--dim); font-size: 14px; margin-left: 12px; font-weight: 400; }
 .dots button, .dots span { min-width: 30px; min-height: 30px; font-size: 14px; }
 @media (max-width: 640px) { .player { flex-wrap: wrap; } .player .voicenote { margin: 6px 0 0; width: 100%; } .vn { width: 100%; } }
+
+/* graduation board (2026-11-18) */
+.board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.board .col { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.board .col h3 { margin: 2px 0 8px; font-size: 18px; }
+.board .v { border-top: 1px solid var(--line); padding: 6px 0; font-size: 15px; }
+.board .why { color: var(--dim); font-size: 13px; }
+@media (max-width: 760px) { .board { grid-template-columns: 1fr; } }

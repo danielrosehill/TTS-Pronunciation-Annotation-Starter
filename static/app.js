@@ -720,13 +720,27 @@ function download(name, text, type) { const a = document.createElement("a"); a.h
 function csvCell(v) { const s = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
 
 // ---------- tabs, toast ----------
+// The graduation board (Daniel, 2026-11-18): every voice in its stage. Screening = no verdict yet on any clip; Arena =
+// passed somewhere, failed nowhere; Out = failed (first fail and reasons shown). Names are shown: this is the overview.
+function renderBoard() {
+  if (!S.data) { $("boardCols").innerHTML = `<div class="muted">Pick an evaluation first.</div>`; return; }
+  const f = failedRuns(), sv = survivors(), rows = [...S.screen.values()];
+  const col = (title, list, why) => `<div class="col"><h3>${title} <span class="muted">${list.length}</span></h3>${list.map((m) => `<div class="v">${esc(m.name)}${why ? `<div class="why">${why(m)}</div>` : ""}</div>`).join("") || `<div class="muted">none</div>`}</div>`;
+  const out = runs().filter((m) => f.has(m.slug)), arena = runs().filter((m) => sv.has(m.slug)), screening = runs().filter((m) => !f.has(m.slug) && !sv.has(m.slug));
+  const failWhy = (m) => { const r = rows.filter((x) => x.run === m.slug && x.verdict === "fail").sort((a, b) => a.sentence.localeCompare(b.sentence))[0];
+    return r ? `${esc(r.sentence)}: ${esc((r.fail_reasons || []).join(", "))}` : ""; };
+  const passWhy = (m) => { const n = rows.filter((x) => x.run === m.slug && x.verdict === "pass").length; const o = [...new Set(rows.filter((x) => x.run === m.slug).flatMap((x) => x.observations || []))];
+    return `${n} clip${n === 1 ? "" : "s"} passed${o.length ? " · " + esc(o.join(", ")) : ""}`; };
+  $("boardCols").innerHTML = col("1 · Screening", screening, () => "waiting for a first listen") + col("2 · Arena", arena, passWhy) + col("Out", out, failWhy);
+}
 function tab(t) {
-  ["start", "rate", "rank", "results"].forEach((x) => ($(x).hidden = x !== t));
+  ["start", "board", "rate", "rank", "results"].forEach((x) => ($(x).hidden = x !== t));
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelector("main").classList.toggle("wide", t === "results");
   $("audio").pause();
   S.tab = t;
   if (t === "results") renderResults();
+  if (t === "board") renderBoard();
   if (t === "rank") openRank(S.rank.sid);
 }
 let toastT;
