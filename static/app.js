@@ -65,11 +65,22 @@ async function flush() {
       if (res.status === 400) { toast("Rejected by the server: " + (await res.text()).slice(0, 120), 5000); setOutbox(outbox().filter((x) => x.id !== item.id)); continue; }
       if (!res.ok) throw new Error("save failed (" + res.status + ")");
       setOutbox(outbox().filter((x) => x.id !== item.id));
+      setTimeout(pollSync, 500);
     }
   } catch (e) { renderOutbox(); toast("Couldn't save: " + e.message + ". Kept on this device; it will retry.", 5000); }
   finally { flushing = false; }
 }
 setInterval(() => outbox().length && flush(), 30000);
+// Server-to-dataset sync, shown in the header: saves are kept on the server at once and committed in the background.
+async function pollSync() {
+  try {
+    const st = await api("sync");
+    $("syncState").textContent = st.local_only ? "· local only" : st.pending ? `· ☁ copying ${st.pending} to the dataset…` :
+      st.last_error ? "· ☁ dataset copy retrying" : st.last_commit ? "· ☁ all saved to the dataset" : "";
+    clearTimeout(pollSync.t); pollSync.t = setTimeout(pollSync, st.pending || st.last_error ? 3000 : 20000);
+  } catch { clearTimeout(pollSync.t); pollSync.t = setTimeout(pollSync, 10000); }
+}
+setTimeout(pollSync, 1500);
 
 // ---------- start ----------
 async function loadEvals() {
@@ -379,7 +390,6 @@ function screenValid(d) {
   if (cur().sid === "overall") return d.note.trim() ? null : "Write a note, or skip";
   if (!d.verdict) return "Pass or fail? (P / X)";
   if (d.verdict === "fail" && !d.fail_reasons.length) return "Why did it fail? Tap a category (1–" + (C.fail_reasons || []).length + ")";
-  if (d.verdict === "fail" && C.other_reason && d.fail_reasons.includes(C.other_reason) && !d.note.trim()) return `"${C.other_reason}" needs a comment`;
   return null;
 }
 const hasContent = (d) => d.verdict || d.fail_reasons.length || d.word_issues.length || d.gender || Object.keys(d.scores).length || d.note.trim();
@@ -447,7 +457,7 @@ async function vnToggle() {
     try {
       const r = await fetch(`/api/voice/${encodeURIComponent(S.evalId)}`, { method: "POST", body: fd });
       if (!r.ok) throw new Error(await r.text());
-      VN.done.add(vnKey(c)); toast("Voice note saved ✓", 1300);
+      VN.done.add(vnKey(c)); toast("Voice note saved ✓", 1300); setTimeout(pollSync, 500);
     } catch (e) { VN.failed = c; toast("Voice note upload failed: " + String(e).slice(0, 80), 4000); }
     renderVn();
   };

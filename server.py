@@ -34,7 +34,7 @@ DEFAULTS = {
     "passes": {"screen": True, "rank": True, "quality": False},
     # Pass 1 judges the whole clip; a fail needs one or more of these categories (keys 1-n while failing).
     "fail_reasons": ["Mispronunciation", "Wrong emphasis (stress)", "Glitch / artefact", "Truncated / skipped words", "Wrong voice or language", "Other"],
-    "other_reason": "Other",                      # needs a comment
+    "other_reason": "Other",                      # free choice; explain by voice note or comment if you like
     "tag_reasons": {"stress": "Wrong emphasis (stress)", "mispronunciation": "Mispronunciation"},  # optional detail -> category
     "rank_reject_reason": "Rejected in ranking (both bad)",
     "gender": {"label": "Voice gender", "options": {"female": "f", "male": "m", "unclear": "u"}},
@@ -95,6 +95,52 @@ STORE.mkdir(parents=True, exist_ok=True)
 ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,80}$")
 
 lock = threading.Lock()
+
+# Background sync (Daniel, 2026-11-18: saving "shouldn't wait on it being uploaded to the remote"). A save is written to
+# the local file and answered at once; one thread commits whatever changed to the dataset, batching saves that arrive
+# within a couple of seconds into one commit, retrying with backoff on failure. A file with unsynced changes is never
+# re-pulled over. Trade-off: a Space restart in the seconds before a commit loses those saves; the client's outbox only
+# covers browser-to-server failures.
+_pending = {}  # path in repo -> (local path, version)
+_pcond = threading.Condition()
+_sync = {"last_commit": None, "last_error": None, "commits": 0}
+
+
+def enqueue(local, repo_path):
+    with _pcond:
+        v = (_pending.get(repo_path) or (None, 0))[1] + 1
+        _pending[repo_path] = (str(local), v)
+        _pcond.notify()
+
+
+def _committer():
+    from huggingface_hub import HfApi, CommitOperationAdd
+    api, created, backoff = HfApi(token=TOKEN), False, 2
+    while True:
+        with _pcond:
+            while not _pending:
+                _pcond.wait()
+        time.sleep(2)
+        with _pcond:
+            batch = dict(_pending)
+        with lock:  # snapshot whole files, never half a line
+            ops = [CommitOperationAdd(rp, Path(lp).read_bytes()) for rp, (lp, _) in batch.items()]
+        try:
+            if not created:
+                api.create_repo(CFG["notes_repo"], repo_type="dataset", private=CFG["notes_private"], exist_ok=True)
+                created = True
+            names = ", ".join(sorted({rp.split("/")[-1] for rp in batch}))[:120]
+            api.create_commit(CFG["notes_repo"], repo_type="dataset", operations=ops, commit_message=f"sync {len(ops)} file(s): {names}")
+            with _pcond:
+                for rp, (_, v) in batch.items():
+                    if _pending.get(rp, (None, -1))[1] == v:
+                        del _pending[rp]
+            _sync.update(last_commit=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), last_error=None, commits=_sync["commits"] + 1)
+            backoff = 2
+        except Exception as ex:
+            _sync["last_error"] = str(ex)[:300]
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
 _evals = {"t": 0, "v": None}
 _manifests = {}
 _pulled = {}  # (eval_id, kind) -> time of the last pull from the dataset
@@ -176,7 +222,8 @@ def path_for(eval_id, kind, max_age=60):
     p = STORE / eval_id / f"{kind}.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     k = (eval_id, kind)
-    if time.time() - _pulled.get(k, 0) > max_age:
+    unsynced = any(lp == str(p) for lp, _ in _pending.values())
+    if time.time() - _pulled.get(k, 0) > max_age and not unsynced:
         if not LOCAL_ONLY:
             from huggingface_hub import hf_hub_download
             try:
@@ -259,25 +306,9 @@ async def post_annotation(eval_id: str, kind: str, request: Request):
         p = path_for(eval_id, kind, max_age=0)
         with open(p, "a", encoding="utf8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        if not LOCAL_ONLY:
-            from huggingface_hub import HfApi
-            try:
-                api = HfApi(token=TOKEN)
-                api.create_repo(CFG["notes_repo"], repo_type="dataset", private=CFG["notes_private"], exist_ok=True)
-                api.upload_file(path_or_fileobj=str(p), path_in_repo=f"annotations/{eval_id}/{kind}.jsonl", repo_id=CFG["notes_repo"],
-                                repo_type="dataset", commit_message=f"{eval_id} {kind}: {row.get('run') or row.get('id') or ''} {row.get('sentence') or ''}")
-            except Exception as ex:  # roll back so the client keeps the row in its outbox and retries
-                lines = p.read_text(encoding="utf8").splitlines()
-                p.write_text("".join(l + "\n" for l in lines[:-1]), encoding="utf8")
-                return JSONResponse({"ok": False, "error": str(ex)[:300]}, status_code=502)
+    if not LOCAL_ONLY:
+        enqueue(p, f"annotations/{eval_id}/{kind}.jsonl")
     return {"ok": True, "row": row}
-
-
-def upload_bytes(data, path_in_repo, msg):
-    from huggingface_hub import HfApi
-    api = HfApi(token=TOKEN)
-    api.create_repo(CFG["notes_repo"], repo_type="dataset", private=CFG["notes_private"], exist_ok=True)
-    api.upload_file(path_or_fileobj=data, path_in_repo=path_in_repo, repo_id=CFG["notes_repo"], repo_type="dataset", commit_message=msg)
 
 
 @app.post("/api/voice/{eval_id}")
@@ -309,15 +340,22 @@ async def post_voice(eval_id: str, request: Request):
         p = path_for(eval_id, "voice", max_age=0)
         with open(p, "a", encoding="utf8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        if not LOCAL_ONLY:
-            try:
-                upload_bytes(data, row["audio"], f"{eval_id} voice note {vid}")
-                upload_bytes(str(p), f"annotations/{eval_id}/voice.jsonl", f"{eval_id} voice: {row.get('run') or ''} {row.get('sentence') or ''}")
-            except Exception as ex:
-                lines = p.read_text(encoding="utf8").splitlines()
-                p.write_text("".join(l + "\n" for l in lines[:-1]), encoding="utf8")
-                return JSONResponse({"ok": False, "error": str(ex)[:300]}, status_code=502)
+    if not LOCAL_ONLY:
+        enqueue(local, row["audio"])
+        enqueue(p, f"annotations/{eval_id}/voice.jsonl")
     return {"ok": True, "row": row}
+
+
+@app.get("/api/sync")
+def sync_status():
+    """How many files still wait to be committed to the dataset, and the last commit or error."""
+    with _pcond:
+        n = len(_pending)
+    return {"pending": n, "local_only": LOCAL_ONLY, **_sync}
+
+
+if not LOCAL_ONLY:
+    threading.Thread(target=_committer, daemon=True).start()
 
 
 # Cache-busting: the page names the assets with the starter's commit (STARTER_COMMIT, set by the Dockerfile) so a new
