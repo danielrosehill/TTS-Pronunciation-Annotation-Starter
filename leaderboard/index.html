@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leaderboard</title>
+<!--
+  Public leaderboard for a screen-then-rank TTS evaluation. Static: deploy as a static HF Space with a config.json beside
+  it. Everything is fetched live from the Hub on each visit, so it never needs rebuilding.
+
+  config.json: {title, intro, notes_repo, evals_registry, eval_id (optional: defaults to the registry's first row),
+                rank_sentence (the Arena item, e.g. "p01"), font_stack, annotator, links: [{label, url}],
+                categories: {"<provenance.category>": "<heading>"}, method (HTML)}
+
+  Reads: the registry row (data_json = clip manifest), and from <notes_repo>/annotations/<eval_id>/:
+    screen.jsonl + screen-voice.jsonl   verdicts; latest per (run, sentence) wins; a run is out at its first fail
+    pairs.jsonl + pairs-voice.jsonl     head-to-head votes (undo rows cancel their target) and explanation rows
+    voice.jsonl + voice-applied.jsonl   spoken notes and their tidied transcripts
+  Ranking: Bradley-Terry (MM iterations, small prior per played pair), shown as a 1000-centred Elo-style score.
+-->
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --line:#e1e4ec; --fg:#1b1f2a; --dim:#5a6276; --acc:#3d6ef5; --good:#2b8a3e; --bad:#c92a2a; --gold:#c58b00; --font:system-ui,sans-serif; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1116; --card:#181b23; --line:#2b303c; --fg:#e8eaf0; --dim:#a7afc0; --acc:#6e97ff; --good:#69db7c; --bad:#ff6b6b; --gold:#ffd479; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  .wrap { max-width:1040px; margin:auto; padding:0 18px; }
+  header { padding:26px 0 8px; }
+  h1 { margin:0 0 6px; font-size:30px; }
+  h2 { margin:34px 0 4px; font-size:22px; }
+  h3 { margin:22px 0 6px; font-size:17px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
+  .intro, .sub { color:var(--dim); margin:0 0 10px; }
+  .links a { display:inline-block; margin:4px 8px 4px 0; padding:4px 12px; border:1px solid var(--line); border-radius:16px; background:var(--card); color:var(--acc); text-decoration:none; font-size:15px; }
+  .stages { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:18px 0; }
+  .stage { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .stage b { display:block; font-size:28px; }
+  .stage span { color:var(--dim); font-size:14px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { padding:9px 10px; border-top:1px solid var(--line); text-align:left; vertical-align:top; font-size:15px; }
+  th { background:var(--bg); font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.03em; border-top:0; }
+  td.n { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .rank { font-weight:800; font-size:20px; }
+  .r1 { color:var(--gold); }
+  .name { font-weight:700; }
+  .meta { color:var(--dim); font-size:13px; }
+  .bar { height:8px; border-radius:4px; background:var(--acc); margin-top:4px; }
+  .chip { display:inline-block; border:1px solid var(--line); border-radius:14px; padding:0 9px; font-size:13px; margin:2px 4px 2px 0; }
+  .chip.bad { border-color:var(--bad); color:var(--bad); }
+  .chip.obs { border-style:dashed; }
+  .quote { font-style:italic; color:var(--fg); margin-top:4px; font-size:14px; }
+  .play { cursor:pointer; border:1px solid var(--line); background:var(--bg); color:var(--fg); border-radius:50%; width:34px; height:34px; font-size:14px; }
+  .play.on { background:var(--acc); color:#fff; }
+  .he { font-family:var(--font); direction:rtl; font-size:22px; }
+  details summary { cursor:pointer; color:var(--acc); }
+  .method { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:6px 18px; }
+  footer { color:var(--dim); font-size:13px; padding:30px 0 50px; }
+  @media (max-width:700px) { .stages { grid-template-columns:repeat(2,1fr); } .hide-m { display:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 id="title">Leaderboard</h1>
+  <p class="intro" id="intro"></p>
+  <div class="links" id="links"></div>
+</header>
+<div class="stages" id="stages"></div>
+
+<h2>Arena ranking</h2>
+<p class="sub" id="arenaSub"></p>
+<table id="arena"></table>
+
+<h2>Waiting for the Arena</h2>
+<p class="sub">Passed Screening; no head-to-head result yet.</p>
+<table id="waiting"></table>
+
+<h2>Waiting for Screening</h2>
+<p class="sub">Generated, not yet heard.</p>
+<div id="pending"></div>
+
+<h2>Out at Screening</h2>
+<p class="sub">Failed on a whole-clip listen. The reason, and the annotator's words where they spoke a note, are kept as results.</p>
+<div id="out"></div>
+
+<h2>Method</h2>
+<div class="method" id="method"></div>
+<footer id="foot"></footer>
+</div>
+<audio id="player"></audio>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let C, D, BASE;
+const res = (p) => `https://huggingface.co/datasets/${C.notes_repo}/resolve/main/${p}`;
+async function lines(url) { const r = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now()); if (!r.ok) return []; return (await r.text()).split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l)); }
+
+function btFit(vs, ids) {
+  const W = {}, N = {}; ids.forEach((i) => { W[i] = 0; N[i] = {}; ids.forEach((j) => (N[i][j] = 0)); });
+  const prior = 0.1;
+  for (const v of vs) { const s = v.outcome === "left" ? 1 : v.outcome === "right" ? 0 : 0.5; W[v.left] += s; W[v.right] += 1 - s; N[v.left][v.right]++; N[v.right][v.left]++; }
+  ids.forEach((i) => ids.forEach((j) => { if (i !== j && N[i][j]) { W[i] += prior; N[i][j] += 2 * prior; } }));
+  let p = Object.fromEntries(ids.map((i) => [i, 1]));
+  for (let it = 0; it < 500; it++) {
+    const q = {};
+    for (const i of ids) { let den = 0; for (const j of ids) if (i !== j && N[i][j]) den += N[i][j] / (p[i] + p[j]); q[i] = den ? W[i] / den : p[i]; }
+    const g = Math.exp(ids.reduce((a, i) => a + Math.log(Math.max(q[i], 1e-9)), 0) / (ids.length || 1));
+    ids.forEach((i) => (q[i] = q[i] / g)); p = q;
+  }
+  return Object.fromEntries(ids.map((i) => [i, Math.round(1000 + 400 * Math.log10(Math.max(p[i], 1e-9)))]));
+}
+
+function play(btn, url) {
+  const a = $("player");
+  document.querySelectorAll(".play.on").forEach((b) => { if (b !== btn) { b.classList.remove("on"); b.textContent = "▶"; } });
+  if (a.dataset.src === url && !a.paused) { a.pause(); btn.classList.remove("on"); btn.textContent = "▶"; return; }
+  if (a.dataset.src !== url) { a.src = url; a.dataset.src = url; }
+  a.play(); btn.classList.add("on"); btn.textContent = "❚❚";
+  a.onended = () => { btn.classList.remove("on"); btn.textContent = "▶"; };
+}
+const btn = (m, sid) => m?.clips?.[sid] ? `<button class="play" title="${esc(sid)}" onclick="play(this, '${esc(BASE + m.clips[sid])}')">▶</button>` : "";
+const variant = (m) => m.run?.input === "nikud" ? "given checked nikud" : "plain text (infers its own vowels)";
+const cat = (m) => (C.categories || {})[m.provenance?.category] || m.provenance?.category || "";
+const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta">${esc(m.provenance?.publisher || "")}${cat(m) ? " · " + esc(cat(m)) : ""} · ${esc(variant(m))}</div>`;
+
+(async function boot() {
+  C = await fetch("config.json").then((r) => r.json());
+  document.documentElement.style.setProperty("--font", C.font_stack || "system-ui, sans-serif");
+  $("title").textContent = document.title = C.title || "Leaderboard";
+  $("intro").innerHTML = C.intro || "";
+  $("links").innerHTML = (C.links || []).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join("");
+  $("method").innerHTML = C.method || "";
+  const EV = await lines(C.evals_registry);
+  const e = EV.find((x) => x.eval_id === C.eval_id) || EV[0];
+  const A = (k) => lines(res(`annotations/${e.eval_id}/${k}.jsonl`));
+  const [data, screen, sv, pairs, pv, voice, va] = await Promise.all([fetch(e.data_json + "?t=" + Date.now()).then((r) => r.json()),
+    A("screen"), A("screen-voice"), A("pairs"), A("pairs-voice"), A("voice"), A("voice-applied")]);
+  D = data; BASE = e.data_json.replace(/[^/]*$/, "");
+  const M = Object.fromEntries(D.models.map((m) => [m.slug, m]));
+
+  // Screening: latest verdict per (run, sentence); out at the first fail
+  const latest = {};
+  for (const r of [...screen, ...sv].sort((a, b) => (a.saved || "").localeCompare(b.saved || ""))) if (r.sentence !== "overall") latest[r.run + "|" + r.sentence] = r;
+  const byRun = {};
+  for (const [k, r] of Object.entries(latest)) (byRun[k.split("|")[0]] ||= []).push(r);
+  const clean = {};
+  for (const r of va) if (r.target) clean[r.target] = r.transcript_clean || r.transcript || clean[r.target];
+  const said = {};
+  for (const n of voice) if (!n.type && clean[n.id]) (said[n.run + "|" + n.sentence] ||= []).push(clean[n.id]);
+  const status = {};
+  for (const m of D.models) {
+    const rs = byRun[m.slug] || [], fails = rs.filter((r) => r.verdict === "fail").sort((a, b) => a.sentence.localeCompare(b.sentence));
+    status[m.slug] = fails.length ? "out" : rs.length ? "pass" : "pending";
+    m._fail = fails[0]; m._rows = rs;
+  }
+
+  // Arena: valid votes (undo cancels), explanation rows by target vote
+  const all = [...pairs, ...pv];
+  const undone = new Set(all.filter((p) => p.type === "undo").map((p) => p.target));
+  const votes = all.filter((p) => p.type !== "undo" && p.type !== "explanation" && p.outcome && p.outcome !== "both_bad" && !undone.has(p.id) && M[p.left] && M[p.right]);
+  const expl = {}; for (const x of all) if (x.type === "explanation") expl[x.target] = x;
+  const ranked = [...new Set(votes.flatMap((v) => [v.left, v.right]))];
+  const bt = btFit(votes, ranked);
+  ranked.sort((a, b) => bt[b] - bt[a]);
+  const lo = Math.min(...ranked.map((s) => bt[s])), hi = Math.max(...ranked.map((s) => bt[s]));
+  const rs = C.rank_sentence || votes[0]?.sentence;
+  const sent = D.sentences.find((s) => s.id === rs);
+  $("arenaSub").innerHTML = `Blind A vs B on ${sent ? `the round-${esc(sent.round || 2)} item <b>${esc(rs)}</b>` : "the Arena item"}, ${votes.length} comparison${votes.length === 1 ? "" : "s"} so far. ` +
+    `Score is Bradley-Terry strength on an Elo-like scale (1000 = average of those ranked); with this few votes, read the order, not the gaps.` +
+    (sent ? `<details style="margin-top:6px"><summary>The text</summary><div class="he">${esc(sent.text_nikud || sent.text)}</div><div class="meta">${esc(sent.english || "")}</div></details>` : "");
+  $("arena").innerHTML = `<thead><tr><th>#</th><th></th><th>Voice</th><th>Score</th><th>W–T–L</th><th class="hide-m">Why it won or lost (annotator)</th></tr></thead><tbody>` +
+    ranked.map((s, i) => {
+      const m = M[s], mine = votes.filter((v) => v.left === s || v.right === s);
+      const w = mine.filter((v) => (v.outcome === "left" && v.left === s) || (v.outcome === "right" && v.right === s)).length, t = mine.filter((v) => v.outcome === "tie").length;
+      const why = mine.map((v) => expl[v.id]).filter(Boolean).map((x) => {
+        const won = (x.preference === "left" ? x.left : x.right) === s, other = M[won ? (x.left === s ? x.right : x.left) : (x.preference === "left" ? x.left : x.right)];
+        return `<div class="quote">${won ? "beat" : "lost to"} ${esc(other?.name || "")}: “${esc(x.note)}”</div>`;
+      }).join("");
+      return `<tr><td class="rank ${i ? "" : "r1"}">${i + 1}</td><td>${btn(m, rs)}</td><td>${nameCell(m)}</td>
+        <td class="n">${bt[s]}<div class="bar" style="width:${hi > lo ? 20 + 80 * (bt[s] - lo) / (hi - lo) : 60}px"></div></td>
+        <td class="n">${w}–${t}–${mine.length - w - t}</td><td class="hide-m">${why}</td></tr>`;
+    }).join("") + "</tbody>";
+
+  const waiting = D.models.filter((m) => status[m.slug] === "pass" && !ranked.includes(m.slug));
+  $("waiting").innerHTML = waiting.length ? `<thead><tr><th></th><th>Voice</th><th>Screened on</th><th class="hide-m">Observations</th></tr></thead><tbody>` +
+    waiting.map((m) => `<tr><td>${btn(m, m._rows[0]?.sentence)}</td><td>${nameCell(m)}</td><td>${m._rows.map((r) => esc(r.sentence)).join(", ")}</td>
+      <td class="hide-m">${[...new Set(m._rows.flatMap((r) => r.observations || []))].map((o) => `<span class="chip obs">${esc(o)}</span>`).join("")}</td></tr>`).join("") + "</tbody>"
+    : `<tbody><tr><td class="meta">None.</td></tr></tbody>`;
+
+  const groups = (list, fn) => {
+    const g = {}; for (const m of list) (g[cat(m) || "Other"] ||= []).push(m);
+    return Object.entries(g).sort().map(([k, ms]) => `<h3>${esc(k)}</h3><table><tbody>${ms.sort((a, b) => a.name.localeCompare(b.name)).map(fn).join("")}</tbody></table>`).join("") || `<p class="meta">None.</p>`;
+  };
+  const first = (m) => Object.keys(m.clips || {}).sort()[0];
+  $("pending").innerHTML = groups(D.models.filter((m) => status[m.slug] === "pending"), (m) => `<tr><td style="width:46px">${btn(m, first(m))}</td><td>${nameCell(m)}</td></tr>`);
+  $("out").innerHTML = groups(D.models.filter((m) => status[m.slug] === "out"), (m) => {
+    const f = m._fail, words = (said[m.slug + "|" + f.sentence] || [])[0] || f.note || "";
+    return `<tr><td style="width:46px">${btn(m, f.sentence)}</td><td>${nameCell(m)}
+      <div>${(f.fail_reasons || []).map((r) => `<span class="chip bad">${esc(r)}</span>`).join("")}${(f.observations || []).map((o) => `<span class="chip obs">${esc(o)}</span>`).join("")}<span class="meta"> on ${esc(f.sentence)}</span></div>
+      ${words ? `<div class="quote">“${esc(words.length > 320 ? words.slice(0, 320) + "…" : words)}”</div>` : ""}</td></tr>`;
+  });
+
+  const n = (s) => D.models.filter((m) => status[m.slug] === s).length;
+  $("stages").innerHTML = [[D.models.length, "voice runs generated"], [n("pending"), "waiting for Screening"], [n("out"), "out at Screening"], [ranked.length + " / " + n("pass"), "in the Arena / passed"]]
+    .map(([b, s]) => `<div class="stage"><b>${b}</b><span>${s}</span></div>`).join("");
+  const lastSave = [...screen, ...sv, ...pairs, ...pv].map((r) => r.saved || "").sort().pop() || "";
+  $("foot").innerHTML = `${esc(e.title)} · started ${esc(e.date)} · last annotation ${esc(lastSave.replace("T", " ").slice(0, 16))} UTC${C.annotator ? " · annotator: " + esc(C.annotator) : ""}. Live from the Hub on every visit.`;
+})();
+</script>
+</body>
+</html>

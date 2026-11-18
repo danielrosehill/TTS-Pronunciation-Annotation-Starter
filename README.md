@@ -120,6 +120,16 @@ request). It fetches everything live from the Hub. Deploy it as a static Space w
 (`title, intro, notes_repo, evals_registry, font_stack, annotator`). Example:
 [danielrosehill/Hebrew-TTS-Listening-Notes-Reader](https://huggingface.co/spaces/danielrosehill/Hebrew-TTS-Listening-Notes-Reader).
 
+### Leaderboard: the public face of an evaluation
+
+`leaderboard/index.html` is a static page that presents a screen-then-rank evaluation live from the Hub: the Arena
+ranking (Bradley-Terry over the A vs B votes, undo rows honoured, each voice playable on the Arena item, with the
+annotator's explanations of each win and loss), the voices waiting for the Arena, the voices waiting for Screening, and
+the ones out at Screening with their fail reasons and the annotator's words, grouped by `provenance.category`
+(e.g. TTS models vs multimodal native-audio models). Deploy as a static Space with a `config.json`
+(`title, intro, notes_repo, evals_registry, eval_id, rank_sentence, font_stack, annotator, categories, links, method`).
+Example: [danielrosehill/Hebrew-TTS-Leaderboard](https://huggingface.co/spaces/danielrosehill/Hebrew-TTS-Leaderboard).
+
 ### Results
 
 - **Screen:**
