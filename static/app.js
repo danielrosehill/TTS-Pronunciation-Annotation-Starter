@@ -133,7 +133,8 @@ function buildQueue() {
   if (S.mode === "compare") {
     for (const s of S.data.sentences.filter(inRound)) {
       // Daniel, 2026-11-18: "I don't need to keep hearing the failure voices because we know that they fail."
-      let rs = runs().filter((m) => m.clips[s.id] && (!S.skipFailed || !failedRuns().has(m.slug) || S.screen.has(key(m.slug, s.id)))).map((m) => m.slug);
+      let rs = runs().filter((m) => m.clips[s.id] && (!S.skipFailed || !failedRuns().has(m.slug) || S.screen.has(key(m.slug, s.id)))
+        && !(S.unscreenedOnly && S.screen.has(key(m.slug, s.id)))).map((m) => m.slug);
       if (S.blind) rs = shuffled(rs, S.evalId + s.id);
       rs.forEach((r, i) => q.push({ run: r, sid: s.id, group: s.id, idx: i, of: rs.length }));
     }
@@ -494,7 +495,13 @@ async function vnToggle() {
 }
 
 // ---------- rank: adaptive play-off per sentence ----------
-const passing = (sid) => runs().filter((m) => m.clips[sid] && S.screen.get(key(m.slug, sid))?.verdict === "pass").map((m) => m.slug);
+// Who meets head to head on an item. Default: clips that passed on that item. With `rank_by: "survivors"` (Daniel,
+// 2026-11-18: screen everything once, then A vs B), a run that passed somewhere and failed nowhere is in on any item it
+// has a clip for, so later rounds' items (e.g. a paragraph) need no screening of their own.
+function survivors() { const f = failedRuns(); return new Set([...S.screen.values()].filter((r) => r.verdict === "pass" && !f.has(r.run)).map((r) => r.run)); }
+const passing = (sid) => (C.rank_by === "survivors"
+  ? (() => { const sv = survivors(); return runs().filter((m) => m.clips[sid] && sv.has(m.slug) && S.screen.get(key(m.slug, sid))?.verdict !== "fail").map((m) => m.slug); })()
+  : runs().filter((m) => m.clips[sid] && S.screen.get(key(m.slug, sid))?.verdict === "pass").map((m) => m.slug));
 const pairId = (sid, a, b) => [sid, ...[a, b].sort()].join("|");
 function votes() { // valid comparisons: not undone; latest per row id
   const undone = new Set(S.pairs.filter((p) => p.type === "undo").map((p) => p.target));
@@ -559,7 +566,7 @@ function btFit(vs, items) {
   }
   return { p, order: ids.slice().sort((a, b) => p[b] - p[a]) };
 }
-function rankSentences() { return S.data.sentences.map((s) => s.id).filter((sid) => passing(sid).length >= 2); }
+function rankSentences() { return S.data.sentences.filter((s) => (C.rank_round == null || s.round === C.rank_round)).map((s) => s.id).filter((sid) => passing(sid).length >= 2); }
 function nextRankSentence(from) {
   const ss = rankSentences(), start = Math.max(0, ss.indexOf(from));
   for (let k = 0; k < ss.length; k++) { const sid = ss[(start + k) % ss.length]; if (schedule(sid).pairs.length) return sid; }
@@ -727,7 +734,7 @@ function toast(msg, ms = 1500) { const t = $("toast"); t.textContent = msg; t.hi
 // ---------- events ----------
 function start() {
   S.mode = document.querySelector("input[name=mode]:checked").value;
-  S.blind = $("blind").checked; S.skipFailed = $("skipFailed").checked; S.voice = $("voicePick").value;
+  S.blind = $("blind").checked; S.skipFailed = $("skipFailed").checked; S.unscreenedOnly = $("unscreenedOnly").checked; LS("unscreenedOnly", S.unscreenedOnly); S.voice = $("voicePick").value;
   S.round = $("roundPickWrap").hidden ? null : $("roundPick").value; LS("round", S.round);
   LS("eval", S.evalId); LS("mode", S.mode); LS("blind", S.blind); LS("skipFailed", S.skipFailed); LS("voice", S.voice);
   buildQueue();
@@ -886,6 +893,7 @@ function onKey(e) {
   const m = LS("mode"); if (m) document.querySelector(`input[name=mode][value=${m}]`).checked = true;
   const b = LS("blind"); if (b != null) $("blind").checked = b;
   const sf = LS("skipFailed"); if (sf != null) $("skipFailed").checked = sf;
+  const uo = LS("unscreenedOnly"); if (uo != null) $("unscreenedOnly").checked = uo;
   S.voice = LS("voice");
   syncModeUi(); renderOutbox(); tab("start");
   try { await loadEvals(); if (S.evalId) await loadEval(); } catch (e) { $("evalList").innerHTML = `<div class="banner">Couldn't load: ${esc(e.message)}</div>`; }
