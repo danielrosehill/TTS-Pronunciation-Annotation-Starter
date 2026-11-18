@@ -83,6 +83,35 @@ There are two ways through:
   rematch also draws, Bradley–Terry decides.
 - **`rank.pairing: "all"`:** serves every pair of passing clips instead.
 
+### Voice notes: say it instead of clicking it
+
+Annotation gets fiddly by hand. So every clip, and every pair, has a **🎙 Voice note** button (key **R**): say what you
+heard, following the agreed structure (pass or fail, why, which word, which syllable was stressed and which should
+have been, what it sounded like, the voice's gender). The recording uploads at once, and you can move on without
+clicking anything else.
+
+1. **Define** the annotation structure (the config: fail reasons, gender options, word-level tag types).
+2. **Record** your feedback per clip, in that structure, by voice.
+3. **Transcribe and apply:** `tools/apply_voice_notes.py` sends each note, with the clip's context (sentence, pointed
+   text, per-word reference IPA and syllables, the allowed categories), to an audio-capable model on OpenRouter (default
+   `google/gemini-3.5-flash`). It keeps the **verbatim transcript**, and writes the structured annotation as a screen row
+   with `source: "voice:<id>"`. A verdict you later saved by hand is never overwritten; that case is logged as a conflict.
+
+```bash
+OPENROUTER_API_KEY=... python3 tools/apply_voice_notes.py --config config.json --verbose   # dry run: shows the reading
+OPENROUTER_API_KEY=... python3 tools/apply_voice_notes.py --config config.json --apply     # writes to the dataset
+```
+
+The recordings are kept in the annotations dataset (`annotations/<eval_id>/voice/<id>.webm`, indexed in `voice.jsonl`
+with the processed transcript), so the annotations can be published with the evidence behind them. Checked on
+2026-11-18 with a spoken test note ("a fail, wrong emphasis on the third word, sefer ... female voice"). It came back as
+verdict `fail`, reason `Wrong emphasis (stress)`, word 3 סֵפֶר stressed on syllable 1 where it should be 0, and gender
+`female`, at under US$0.01 per note.
+
+The same pattern works for any audio judgement where speaking is faster than clicking: voice clones, EQ and mix
+choices, noise removal. It is the `spoken-annotations` skill of the ai-eval plugin; the method as a whole is its
+`screen-then-rank` skill.
+
 ### Results
 
 - **Screen:**

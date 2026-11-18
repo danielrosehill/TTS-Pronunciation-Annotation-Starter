@@ -160,6 +160,7 @@ function openClip(pos, play = true) {
   else a.removeAttribute("src");
 }
 function renderClip() {
+  setTimeout(renderVn);
   const c = cur(), s = sentBy(c.sid), overall = c.sid === "overall";
   const group = S.queue.filter((x) => x.group === c.group);
   const done = S.queue.filter((x) => S.screen.has(key(x.run, x.sid))).length;
@@ -385,10 +386,59 @@ function saveScreen() {
 }
 function go(delta, doSave) {
   S.draft.note = $("note").value;
-  if (doSave) { if (!saveScreen()) return; }
+  if (doSave && !S.draft.verdict && VN.done.has(key(cur().run, cur().sid))) { S.dirty = false; }
+  else if (doSave) { if (!saveScreen()) return; }
   else if (S.dirty && hasContent(S.draft) && !screenValid(S.draft)) saveScreen();
   if (S.pos + delta >= S.queue.length) { toast("That was the last clip 🎉 Next: 2 · Rank", 2500); renderClip(); return; }
   openClip(S.pos + delta);
+}
+
+// ---------- voice notes: spoken feedback per clip, uploaded at once, applied later by tools/apply_voice_notes.py ----------
+const VN = { rec: null, chunks: [], t0: 0, ctx: null, done: new Set(), failed: null };
+function vnCtx() {
+  if (S.tab === "rank" && S.rank?.pair) { const p = S.rank.pair; return { pass: "rank", sentence: p.sid, left: p.left, right: p.right, blind: true }; }
+  const c = cur(); if (!c) return null;
+  const m = runBy(c.run);
+  return { pass: "screen", run: c.run, run_name: isBlind() ? "" : m.name, sentence: c.sid, blind: isBlind() };
+}
+const vnKey = (x) => x && (x.pass === "rank" ? `rank|${x.sentence}|${x.left}|${x.right}` : key(x.run, x.sentence));
+function renderVn() {
+  const b = $("vnBtn"); if (!b) return;
+  const ctx = vnCtx(), on = !!VN.rec;
+  b.classList.toggle("rec", on);
+  b.innerHTML = on ? "■ Stop and send <kbd>R</kbd>" : "🎙 Voice note <kbd>R</kbd>";
+  $("vnState").textContent = on ? "Recording… say what you heard: pass or fail, why, which word." :
+    VN.failed ? "Upload failed: press R twice to record again, or check the connection." :
+    VN.done.has(vnKey(ctx)) ? "Voice note saved ✓ (transcribed and applied later)" : "";
+}
+async function vnToggle() {
+  if (VN.rec) { VN.rec.stop(); return; }
+  const ctx = vnCtx(); if (!ctx) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { toast("Microphone blocked: allow it for this page", 3000); return; }
+  $("audio").pause();
+  const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  VN.rec = rec; VN.chunks = []; VN.t0 = Date.now(); VN.ctx = ctx; VN.failed = null;
+  rec.ondataavailable = (e) => e.data.size && VN.chunks.push(e.data);
+  rec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    const blob = new Blob(VN.chunks, { type: rec.mimeType || "audio/webm" }), c = VN.ctx, secs = (Date.now() - VN.t0) / 1000;
+    VN.rec = null; renderVn();
+    if (secs < 0.6) { toast("Too short: hold R or tap again to stop", 1800); return; }
+    const fd = new FormData();
+    fd.append("audio", blob, "note");
+    Object.entries(c).forEach(([k, v]) => fd.append(k, String(v)));
+    fd.append("seconds", String(secs)); fd.append("client_id", LS("client") || "");
+    try {
+      const r = await fetch(`/api/voice/${encodeURIComponent(S.evalId)}`, { method: "POST", body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      VN.done.add(vnKey(c)); toast("Voice note saved ✓", 1300);
+    } catch (e) { VN.failed = c; toast("Voice note upload failed: " + String(e).slice(0, 80), 4000); }
+    renderVn();
+  };
+  rec.start(); renderVn();
 }
 
 // ---------- rank: adaptive play-off per sentence ----------
@@ -681,6 +731,7 @@ function wire() {
   $("popRemove").addEventListener("click", removeTag);
   $("pop").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches("input")) { e.preventDefault(); savePop(); } });
   $("save").addEventListener("click", () => go(1, true));
+  $("vnBtn").addEventListener("click", vnToggle);
   $("next").addEventListener("click", () => go(1, false));
   $("prev").addEventListener("click", () => go(-1, false));
   $("dots").addEventListener("click", (e) => { const b = e.target.closest(".dot"); if (b) go(Number(b.dataset.i) - S.pos, false); });
@@ -732,6 +783,7 @@ function onKey(e) {
     let hit = null;
     if (e.key.length === 1) for (const a of qAxes()) if (!isScale(a)) for (const o of axisOptions(a)) if (o.key && o.key.toLowerCase() === k) hit = { a, o };
     if (e.key === " ") { e.preventDefault(); $("play").click(); }
+    else if (k === "r") vnToggle();
     else if (k === "p") setResult("pass");
     else if (k === "x") setResult("fail");
     else if (g) { S.draft.gender = g.v; S.prefilled = false; touch(); renderVerdict(); }
@@ -746,7 +798,8 @@ function onKey(e) {
     else if (e.key === "ArrowLeft") go(-1, false);
   } else if (S.tab === "rank") {
     const map = { 1: "left", 2: "right", 3: "tie", 4: "both_bad" };
-    if (k === "a") playSide("left");
+    if (k === "r") vnToggle();
+    else if (k === "a") playSide("left");
     else if (k === "b") playSide("right");
     else if (map[e.key]) { S.rank.choice = map[e.key]; renderRank(); }
     else if (e.key === "Enter") { e.preventDefault(); confirmPair(); }

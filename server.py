@@ -10,7 +10,7 @@ import json, os, re, threading, time, urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 HERE = Path(__file__).parent
@@ -97,7 +97,7 @@ ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,80}$")
 lock = threading.Lock()
 _evals = {"t": 0, "v": None}
 _manifests = {}
-_pulled = set()
+_pulled = {}  # (eval_id, kind) -> time of the last pull from the dataset
 app = FastAPI()
 
 
@@ -155,7 +155,12 @@ def manifest(eval_id):
 # Passes and their files: annotations/<eval_id>/<kind>.jsonl, append-only.
 #   screen: tts-annotation/2, one pass/fail per clip; the latest line per (run, sentence) wins.
 #   pairs:  tts-pairwise/1, one line per comparison; {"type": "undo", "target": id} lines cancel one.
-KINDS = {"screen": "tts-annotation/2", "pairs": "tts-pairwise/1"}
+KINDS = {"screen": "tts-annotation/2", "pairs": "tts-pairwise/1", "voice": "tts-voice-note/1"}
+# voice: spoken feedback recorded in the browser (Daniel, 2026-11-18: "record my annotation ... run those through speech
+# to text ... and the AI tool could apply the annotations"). One line per note: the audio is stored beside it as
+# annotations/<eval_id>/voice/<id>.<ext>; tools/apply_voice_notes.py later adds {"type": "processed", "target": id,
+# "transcript": ..., "applied": {...}} lines and writes the derived screen rows (source "voice:<id>").
+VOICE_ROW = ["id", "pass", "run", "run_name", "sentence", "left", "right", "blind", "mime", "seconds", "client_id"]
 SCREEN_ROW = ["run", "run_name", "input", "sentence", "verdict", "fail_reasons", "word_issues", "gender", "scores", "note", "blind", "source", "client_id"]
 PAIR_ROW = ["id", "type", "target", "sentence", "pair", "left", "right", "outcome", "stage", "note", "client_id"]
 
@@ -165,11 +170,13 @@ def kind_ok(kind):
         raise HTTPException(404, "unknown annotation kind")
 
 
-def path_for(eval_id, kind):
+def path_for(eval_id, kind, max_age=60):
+    """Local copy of the annotation file, re-pulled from the dataset when older than max_age seconds (0 = always, used
+    before every write, so lines added outside the Space, e.g. by tools/apply_voice_notes.py, are never overwritten)."""
     p = STORE / eval_id / f"{kind}.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     k = (eval_id, kind)
-    if k not in _pulled:
+    if time.time() - _pulled.get(k, 0) > max_age:
         if not LOCAL_ONLY:
             from huggingface_hub import hf_hub_download
             try:
@@ -177,7 +184,7 @@ def path_for(eval_id, kind):
                 p.write_text(Path(src).read_text(encoding="utf8"), encoding="utf8")
             except Exception:
                 pass
-        _pulled.add(k)
+        _pulled[k] = time.time()
     if not p.exists():
         p.write_text("", encoding="utf8")
     return p
@@ -234,6 +241,8 @@ def get_annotations(eval_id: str, kind: str):
 @app.post("/api/annotations/{eval_id}/{kind}")
 async def post_annotation(eval_id: str, kind: str, request: Request):
     find(eval_id); kind_ok(kind)
+    if kind == "voice":
+        raise HTTPException(400, "voice notes go to /api/voice/{eval_id}")
     body = await request.json()
     if kind == "screen":
         if not body.get("run") or not body.get("sentence") or body.get("verdict") not in ("pass", "fail"):
@@ -247,7 +256,7 @@ async def post_annotation(eval_id: str, kind: str, request: Request):
         row = {k: body.get(k) for k in PAIR_ROW if body.get(k) is not None}
     row.update(eval_id=eval_id, saved=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), schema=KINDS[kind])
     with lock:
-        p = path_for(eval_id, kind)
+        p = path_for(eval_id, kind, max_age=0)
         with open(p, "a", encoding="utf8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         if not LOCAL_ONLY:
@@ -264,9 +273,63 @@ async def post_annotation(eval_id: str, kind: str, request: Request):
     return {"ok": True, "row": row}
 
 
+def upload_bytes(data, path_in_repo, msg):
+    from huggingface_hub import HfApi
+    api = HfApi(token=TOKEN)
+    api.create_repo(CFG["notes_repo"], repo_type="dataset", private=CFG["notes_private"], exist_ok=True)
+    api.upload_file(path_or_fileobj=data, path_in_repo=path_in_repo, repo_id=CFG["notes_repo"], repo_type="dataset", commit_message=msg)
+
+
+@app.post("/api/voice/{eval_id}")
+async def post_voice(eval_id: str, request: Request):
+    """A spoken note on a clip (or a pair): the audio file plus its context, as multipart form fields."""
+    find(eval_id)
+    form = await request.form()
+    audio = form.get("audio")
+    if audio is None or not form.get("pass"):
+        raise HTTPException(400, "audio and pass are required")
+    data = await audio.read()
+    if not data or len(data) > 20_000_000:
+        raise HTTPException(400, "empty or too large (20 MB max)")
+    mime = (audio.content_type or "audio/webm").split(";")[0]
+    ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}.get(mime, "webm")
+    vid = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "_" + os.urandom(3).hex()
+    row = {k: form.get(k) for k in VOICE_ROW if form.get(k) not in (None, "")}
+    row.update(id=vid, mime=mime, audio=f"annotations/{eval_id}/voice/{vid}.{ext}", eval_id=eval_id,
+               saved=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), schema=KINDS["voice"])
+    for k in ("blind",):
+        if k in row:
+            row[k] = row[k] == "true"
+    if "seconds" in row:
+        row["seconds"] = round(float(row["seconds"]), 1)
+    with lock:
+        local = STORE / eval_id / "voice" / f"{vid}.{ext}"
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(data)
+        p = path_for(eval_id, "voice", max_age=0)
+        with open(p, "a", encoding="utf8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        if not LOCAL_ONLY:
+            try:
+                upload_bytes(data, row["audio"], f"{eval_id} voice note {vid}")
+                upload_bytes(str(p), f"annotations/{eval_id}/voice.jsonl", f"{eval_id} voice: {row.get('run') or ''} {row.get('sentence') or ''}")
+            except Exception as ex:
+                lines = p.read_text(encoding="utf8").splitlines()
+                p.write_text("".join(l + "\n" for l in lines[:-1]), encoding="utf8")
+                return JSONResponse({"ok": False, "error": str(ex)[:300]}, status_code=502)
+    return {"ok": True, "row": row}
+
+
+# Cache-busting: the page names the assets with the starter's commit (STARTER_COMMIT, set by the Dockerfile) so a new
+# deploy is never served from a stale browser cache.
+ASSET_V = (os.environ.get("STARTER_COMMIT") or str(int((HERE / "static/app.js").stat().st_mtime)))[:12]
+
+
 @app.get("/")
 def index():
-    return FileResponse(HERE / "static/index.html", headers={"Cache-Control": "no-cache"})
+    html = (HERE / "static/index.html").read_text(encoding="utf8")
+    html = html.replace('/static/app.js"', f'/static/app.js?v={ASSET_V}"').replace('/static/style.css"', f'/static/style.css?v={ASSET_V}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")

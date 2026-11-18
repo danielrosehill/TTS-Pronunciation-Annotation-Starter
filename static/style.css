@@ -209,3 +209,7 @@ body.rtl .syls { direction: ltr; }
 .detail summary { cursor: pointer; color: var(--acc); font-size: 14px; }
 .chip kbd { margin-right: 2px; }
 .chip.on kbd { color: #fff; border-color: rgba(255,255,255,.7); background: transparent; }
+
+.voicenote { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; flex-wrap: wrap; }
+.vn.rec { background: #d92d20; color: #fff; border-color: #d92d20; animation: vnpulse 1.2s infinite; }
+@keyframes vnpulse { 50% { opacity: .7; } }
