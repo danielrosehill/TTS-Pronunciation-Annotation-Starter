@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TTS pronunciation annotation</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">🎧 <span id="appTitle">TTS pronunciation annotation</span></div>
+  <nav>
+    <button data-tab="rate" class="tab on">Rate</button>
+    <button data-tab="results" class="tab">Results</button>
+    <button data-tab="start" class="tab">Evaluations</button>
+    <button id="helpBtn" class="ghost" title="Help and keyboard shortcuts (?)">?</button>
+  </nav>
+</header>
+
+<div id="outbox" class="banner" hidden></div>
+<div id="localNote" class="banner info" hidden>Local mode: annotations stay on this server (no dataset configured).</div>
+
+<main>
+  <section id="start" hidden>
+    <h2>Choose an evaluation</h2>
+    <div id="evalList" class="evals"></div>
+    <h2>How to go through it</h2>
+    <div class="modes">
+      <label class="mode"><input type="radio" name="mode" value="compare" checked>
+        <b>Compare voices on one sentence</b><span>Every voice reads the same sentence, one after another. Best for ranking.</span></label>
+      <label class="mode"><input type="radio" name="mode" value="voice">
+        <b>One voice through every sentence</b><span>Get to know one voice, then leave an overall note.</span></label>
+    </div>
+    <div class="opts">
+      <label class="check"><input type="checkbox" id="blind" checked> Blind: hide voice names until I save (order shuffled)</label>
+      <label id="voicePickWrap" hidden>Voice <select id="voicePick"></select></label>
+    </div>
+    <button id="go" class="primary big">Start listening ▶</button>
+  </section>
+
+  <section id="rate" hidden>
+    <div class="where">
+      <div id="whereText"></div>
+      <div class="jump"><select id="groupPick" title="Jump to"></select></div>
+    </div>
+    <div id="dots" class="dots"></div>
+    <div class="bar"><div id="barFill"></div></div>
+
+    <div class="card sentence">
+      <div class="focus" id="focus"></div>
+      <div class="plain" id="plain"></div>
+      <div class="display" id="words"></div>
+      <div class="english" id="gloss"></div>
+      <div class="taghint">Tap a word to mark <b>wrong stress</b> or a <b>mispronunciation</b>. Shift-tap (or <button id="multiBtn" class="link">multi-word</button>) for a span.</div>
+      <button id="tagSel" class="primary small" hidden>Tag selected words</button>
+      <div id="tagList" class="taglist"></div>
+    </div>
+
+    <div class="player">
+      <button id="play" class="play" aria-label="Play">▶</button>
+      <div class="voice"><div id="voiceName" class="vname"></div><div id="voiceSub" class="vsub"></div></div>
+    </div>
+
+    <div class="card ratings" id="ratings"></div>
+
+    <div class="card">
+      <label class="axis-label" for="note">Overall comment on this rendition</label>
+      <textarea id="note" rows="2" placeholder="The take as a whole in this voice: pace, tone, artefacts…"></textarea>
+    </div>
+
+    <div class="actions">
+      <button id="prev" class="ghost">◀ Previous</button>
+      <button id="save" class="primary big">Save &amp; next ⏎</button>
+      <button id="next" class="ghost">Skip ▶</button>
+    </div>
+    <div id="state" class="state"></div>
+  </section>
+
+  <section id="results" hidden>
+    <div class="res-head">
+      <h2 id="resTitle">Results</h2>
+      <div><button id="dlCsv" class="ghost">Download CSV</button> <button id="dlJson" class="ghost">Download JSONL</button></div>
+    </div>
+    <p class="muted">Means over the clips you rated (overall notes excluded). Click a heading to sort.</p>
+    <div class="scroll"><table id="byVoice"></table></div>
+    <h3>By sentence</h3>
+    <div class="scroll"><table id="bySentence"></table></div>
+  </section>
+</main>
+
+<!-- Word popover: structured pronunciation tags -->
+<div id="pop" class="pop" hidden>
+  <div class="pop-title" id="popTitle"></div>
+  <div class="pop-ref" id="popRef"></div>
+  <div class="ptabs">
+    <button data-p="stress" class="ptab on">Stress</button>
+    <button data-p="mis" class="ptab">Mispronounced</button>
+    <button data-p="minor" class="ptab">Other</button>
+  </div>
+  <div class="ppanel" data-p="stress">
+    <label class="mini">Syllables <span class="muted">(hyphens between them)</span></label>
+    <input id="sylInput" class="ipa" placeholder="e.g. se-fer">
+    <div class="mini">Voice stressed</div><div class="syls" id="sylHeard"></div>
+    <div class="mini">Should be</div><div class="syls" id="sylCorrect"></div>
+    <input id="stressComment" class="cmt" placeholder="Comment (optional)">
+  </div>
+  <div class="ppanel" data-p="mis" hidden>
+    <label class="mini" for="ipaHeard">Heard (IPA)</label>
+    <input id="ipaHeard" class="ipa" placeholder="what the voice said" dir="ltr">
+    <label class="mini" for="ipaExpected">Expected (IPA)</label>
+    <input id="ipaExpected" class="ipa" placeholder="what it should be" dir="ltr">
+    <div class="keypad" id="keypad"></div>
+    <button class="link ipahelp-open" type="button">IPA help: what each symbol is ▸</button>
+    <input id="misComment" class="cmt" placeholder="Comment (optional)">
+  </div>
+  <div class="ppanel" data-p="minor" hidden>
+    <div class="chips" id="minorChips"></div>
+    <input id="minorComment" class="cmt" placeholder="Comment (optional)">
+  </div>
+  <div class="pop-actions">
+    <button id="popRemove" class="ghost danger">Remove this tag</button>
+    <span></span>
+    <button id="popCancel" class="ghost">Cancel</button>
+    <button id="popOk" class="primary small">Save tag</button>
+  </div>
+</div>
+
+<div id="help" class="modal" hidden>
+  <div class="modal-box">
+    <h3>How to annotate</h3>
+    <p>Answer each row for the clip: scales are 1 = poor to 5 = native-perfect, yes/no rows are a plain yes or no, and
+      choice rows pick one option. Leave a row empty if you can't judge it. Then mark word-level problems: tap the word.</p>
+    <ul class="helplist">
+      <li><b>Stress</b>: pick the syllable the voice stressed and the one it should have. The reference syllables and stress
+        are preselected when the evaluation provides them.</li>
+      <li><b>Mispronounced</b>: write what you heard and what was expected in <b>IPA</b> (the keypad has the common
+        symbols). Annotators are expected to know IPA.</li>
+      <li><b>Other</b>: skipped, added sound, unnatural pause, accent… with a comment. Shift-tap to tag a span.</li>
+    </ul>
+    <p class="muted" id="refNote"></p>
+    <p><button class="ghost ipahelp-open" type="button">Open IPA help</button></p>
+    <h3>Keyboard</h3>
+    <table class="keys">
+      <tr><td><kbd>Space</kbd></td><td>Play / pause</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>Score the highlighted scale row, then move to the next scale row</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Tab</kbd></td><td>Move between rating rows</td></tr>
+      <tr><td><kbd>Backspace</kbd></td><td>Clear the highlighted row</td></tr>
+      <tbody id="axisKeyHelp"></tbody>
+      <tr><td><kbd>Enter</kbd></td><td>Save and next (<kbd>Ctrl</kbd>+<kbd>Enter</kbd> inside the comment)</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next (unsaved changes are saved first)</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close a popup</td></tr>
+    </table>
+    <button class="primary" id="helpClose">Close</button>
+  </div>
+</div>
+
+<aside id="ipaDrawer" class="drawer" hidden>
+  <div class="drawer-head">
+    <b id="ipaDrawerTitle">IPA help</b>
+    <button id="ipaDrawerClose" class="ghost" aria-label="Close">✕</button>
+  </div>
+  <input id="ipaSearch" class="cmt" placeholder="Search: a symbol, a letter, an error (e.g. ch)">
+  <div id="ipaList" class="ipalist"></div>
+  <details id="ipaNotesWrap"><summary>Full cliff notes</summary><div id="ipaNotes" class="md"></div></details>
+</aside>
+
+<div id="toast" class="toast" hidden></div>
+<audio id="audio" preload="auto"></audio>
+<script src="/static/app.js"></script>
+</body>
+</html>

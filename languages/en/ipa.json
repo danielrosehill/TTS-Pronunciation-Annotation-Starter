@@ -1,0 +1,52 @@
+{
+ "language": "en",
+ "name": "English (stub)",
+ "notes": null,
+ "source": "Stub: replace with a real language pack (see languages/README.md).",
+ "keypad": [
+  "ˈ",
+  "ˌ",
+  "ə",
+  "ɪ",
+  "ʊ",
+  "ɛ",
+  "æ",
+  "ɑ",
+  "ɔ",
+  "ʌ",
+  "θ",
+  "ð",
+  "ʃ",
+  "ʒ",
+  "tʃ",
+  "dʒ",
+  "ŋ",
+  "ɹ",
+  "ː"
+ ],
+ "symbols": [
+  {
+   "symbol": "θ",
+   "kind": "consonant",
+   "letters": "th",
+   "sounds_like": "\"th\" in \"thin\"",
+   "example": "think θɪŋk",
+   "common_errors": [
+    "t",
+    "f",
+    "s"
+   ]
+  },
+  {
+   "symbol": "ð",
+   "kind": "consonant",
+   "letters": "th",
+   "sounds_like": "\"th\" in \"this\"",
+   "example": "this ðɪs",
+   "common_errors": [
+    "d",
+    "z"
+   ]
+  }
+ ]
+}

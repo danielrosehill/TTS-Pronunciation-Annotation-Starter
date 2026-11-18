@@ -1,0 +1,73 @@
+{
+  "title": "Hebrew TTS listening notes",
+  "language": "he",
+  "rtl": true,
+  "font_stack": "\"Noto Sans Hebrew\", \"Arial Hebrew\", Arial, sans-serif",
+  "language_pack": "he",
+  "fields": {
+    "display": "text_nikud",
+    "secondary": "text",
+    "gloss": "english"
+  },
+  "axes": [
+    {
+      "key": "naturalness",
+      "type": "scale",
+      "label": "Naturalness",
+      "hint": "Does it sound like a person?"
+    },
+    {
+      "key": "clarity",
+      "type": "scale",
+      "label": "Clarity",
+      "hint": "Every syllable easy to make out and copy?"
+    },
+    {
+      "key": "hebrew",
+      "type": "scale",
+      "label": "Hebrew accuracy",
+      "hint": "Right words, stress and Israeli accent?"
+    },
+    {
+      "key": "nikud",
+      "type": "binary",
+      "label": "Vowels match the nikud?",
+      "short": "Vowels match nikud",
+      "labels": {
+        "yes": "Yes",
+        "no": "No"
+      },
+      "keys": {
+        "yes": "v",
+        "no": "x"
+      },
+      "hint": "Every vowel heard matches the pointed text. On a plain-text clip this is the model's nikud inference. If No, tag the word(s) as mispronunciation."
+    },
+    {
+      "key": "use",
+      "type": "choice",
+      "label": "Use it as the reference voice?",
+      "short": "Use it",
+      "options": [
+        "Yes",
+        "Maybe",
+        "No"
+      ],
+      "keys": {
+        "Yes": "y",
+        "Maybe": "m",
+        "No": "n"
+      }
+    }
+  ],
+  "minor_tags": [
+    "Skipped",
+    "Added sound",
+    "Unnatural pause",
+    "Accent",
+    "Other"
+  ],
+  "reference_label": "Machine reference: check it",
+  "notes_repo": "your-user/your-annotations-dataset",
+  "evals_registry": "https://huggingface.co/datasets/Hebrish/Hebrew-TTS-Evaluations/resolve/main/evals.jsonl"
+}

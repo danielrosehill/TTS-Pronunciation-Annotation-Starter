@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/danielrosehill/TTS-Pronunciation-Annotation-Starter/schema/annotation.schema.json",
+  "title": "TTS annotation row (tts-annotation/1)",
+  "description": "One line of annotations/<eval_id>.jsonl. Append-only: the latest line per (run, sentence) is the current annotation.",
+  "type": "object",
+  "required": [
+    "schema",
+    "eval_id",
+    "run",
+    "sentence",
+    "scores",
+    "word_tags",
+    "saved"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tts-annotation/1"
+    },
+    "eval_id": {
+      "type": "string",
+      "description": "The evaluation (registry eval_id)"
+    },
+    "run": {
+      "type": "string",
+      "description": "Model run slug from the clip manifest (models[].slug)"
+    },
+    "run_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display name of the run at save time"
+    },
+    "input": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "How the run was fed, from the manifest (e.g. plain, nikud)"
+    },
+    "sentence": {
+      "type": "string",
+      "description": "Sentence id from the manifest, or \"overall\" for a note on the run as a whole"
+    },
+    "scores": {
+      "type": "object",
+      "description": "Axis key (config axes) -> answer. scale axes: integer 1-5; binary axes: \"yes\" or \"no\"; choice axes: one of the axis options. A missing key = not judged.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          {
+            "enum": [
+              "yes",
+              "no"
+            ]
+          },
+          {
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "word_tags": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "Stress on the wrong syllable",
+            "required": [
+              "type",
+              "word",
+              "position",
+              "syllables",
+              "heard",
+              "correct"
+            ],
+            "properties": {
+              "type": {
+                "const": "stress"
+              },
+              "word": {
+                "type": "string"
+              },
+              "position": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "1-based word position in reading order"
+              },
+              "syllables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "heard": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "0-based index of the syllable the voice stressed"
+              },
+              "correct": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "0-based index of the syllable that should be stressed"
+              },
+              "comment": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "Mispronunciation",
+            "required": [
+              "type",
+              "word",
+              "position",
+              "ipa_heard",
+              "ipa_expected"
+            ],
+            "properties": {
+              "type": {
+                "const": "mispronunciation"
+              },
+              "word": {
+                "type": "string"
+              },
+              "position": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "ipa_heard": {
+                "type": "string",
+                "description": "IPA of what the voice said"
+              },
+              "ipa_expected": {
+                "type": "string",
+                "description": "IPA of what it should have said"
+              },
+              "comment": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "Minor tag (one word or a span)",
+            "required": [
+              "type",
+              "words",
+              "positions",
+              "tags"
+            ],
+            "properties": {
+              "type": {
+                "const": "minor"
+              },
+              "words": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "positions": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "From config minor_tags"
+              },
+              "comment": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "note": {
+      "type": "string",
+      "description": "Overall comment on this rendition"
+    },
+    "blind": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "True if the run's name was hidden when it was annotated"
+    },
+    "client_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Random id of the browser that saved it"
+    },
+    "saved": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC, set by the server"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Demo manifest",
+  "clip_base": "/static/examples/",
+  "sentences": [
+    {"id": "s01", "text": "The record shows a record attendance.", "focus": "homograph: REcord vs reCORD",
+     "words": [
+       {"position": 1, "text": "The", "ipa_ref": "ðə", "syllables": ["the"], "stress_ref": 0},
+       {"position": 2, "text": "record", "ipa_ref": "ˈɹɛkɚd", "syllables": ["re", "cord"], "stress_ref": 0},
+       {"position": 3, "text": "shows", "ipa_ref": "ʃoʊz", "syllables": ["shows"], "stress_ref": 0},
+       {"position": 4, "text": "a", "ipa_ref": "ə", "syllables": ["a"], "stress_ref": 0},
+       {"position": 5, "text": "record", "ipa_ref": "ˈɹɛkɚd", "syllables": ["re", "cord"], "stress_ref": 0},
+       {"position": 6, "text": "attendance", "ipa_ref": "əˈtɛndəns", "syllables": ["at", "ten", "dance"], "stress_ref": 1}
+     ],
+     "words_source": "hand-written example"},
+    {"id": "s02", "text": "Thirteen thirsty thinkers thought it through.", "focus": "th sounds"}
+  ],
+  "models": [
+    {"slug": "voice-a", "name": "Example voice A", "run": {"input": "plain"}, "clips": {"s01": "voice-a-s01.wav", "s02": "voice-a-s02.wav"}},
+    {"slug": "voice-b", "name": "Example voice B", "run": {"input": "plain"}, "clips": {"s01": "voice-b-s01.wav", "s02": "voice-b-s02.wav"}}
+  ]
+}

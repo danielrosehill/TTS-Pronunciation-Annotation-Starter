@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/danielrosehill/TTS-Pronunciation-Annotation-Starter/schema/manifest.schema.json",
+  "title": "Clip manifest",
+  "description": "What the app plays: sentences, model runs and their clips. Clip paths are relative to clip_base (default: the manifest's own folder).",
+  "type": "object",
+  "required": ["sentences", "models"],
+  "properties": {
+    "title": {"type": "string"},
+    "clip_base": {"type": "string", "description": "URL prefix for clip paths; defaults to the manifest URL's folder"},
+    "words_source": {"type": "string", "description": "Where word references come from (may also be set per sentence)"},
+    "sentences": {"type": "array", "items": {
+      "type": "object", "required": ["id"],
+      "description": "Text fields are named by config.fields (display, secondary, gloss); any extra fields are ignored",
+      "properties": {
+        "id": {"type": "string"},
+        "focus": {"type": "string", "description": "What the sentence tests"},
+        "words_source": {"type": "string"},
+        "words": {"type": "array", "description": "Optional per-word reference; without it, words are split from the display text and annotators type syllables and IPA themselves",
+          "items": {"type": "object", "required": ["position"], "properties": {
+            "position": {"type": "integer", "minimum": 1},
+            "text": {"type": "string", "description": "The word as displayed (a `nikud` field is also accepted)"},
+            "ipa_ref": {"type": "string", "description": "Reference IPA, prefilled as the expected IPA"},
+            "syllables": {"type": "array", "items": {"type": "string"}},
+            "stress_ref": {"type": ["integer", "null"], "minimum": 0, "description": "0-based index into syllables, preselected as the correct stress"}}}}
+      }}},
+    "models": {"type": "array", "items": {
+      "type": "object", "required": ["slug", "name", "clips"],
+      "properties": {
+        "slug": {"type": "string", "description": "Stable run id; annotations key on it"},
+        "name": {"type": "string"},
+        "run": {"type": "object", "description": "Free-form run metadata; `input` is shown and saved", "properties": {"input": {"type": "string"}}},
+        "clips": {"type": "object", "description": "sentence id -> clip path", "additionalProperties": {"type": "string"}}}}}
+  }
+}

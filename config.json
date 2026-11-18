@@ -1,0 +1,53 @@
+{
+  "title": "TTS pronunciation annotation (demo)",
+  "language": "en",
+  "rtl": false,
+  "language_pack": "en",
+  "fields": {
+    "display": "text",
+    "secondary": null,
+    "gloss": null
+  },
+  "axes": [
+    {
+      "key": "naturalness",
+      "type": "scale",
+      "label": "Naturalness",
+      "hint": "Does it sound like a person?"
+    },
+    {
+      "key": "pronunciation",
+      "type": "scale",
+      "label": "Pronunciation",
+      "hint": "Right sounds and stress, word by word?"
+    },
+    {
+      "key": "use",
+      "type": "choice",
+      "label": "Use this voice?",
+      "options": [
+        "Yes",
+        "Maybe",
+        "No"
+      ],
+      "keys": {
+        "Yes": "y",
+        "Maybe": "m",
+        "No": "n"
+      }
+    }
+  ],
+  "minor_tags": [
+    "Skipped",
+    "Added sound",
+    "Unnatural pause",
+    "Accent",
+    "Other"
+  ],
+  "reference_label": "Machine reference: check it",
+  "notes_repo": null,
+  "evals_registry": null,
+  "manifest_url": "/static/examples/demo-manifest.json",
+  "manifest_eval_id": "demo",
+  "manifest_title": "Demo manifest (no audio)"
+}

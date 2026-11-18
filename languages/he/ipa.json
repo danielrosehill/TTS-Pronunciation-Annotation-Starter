@@ -1,0 +1,313 @@
+{
+ "language": "he",
+ "name": "Modern Israeli Hebrew",
+ "notes": "ipa-cliff-notes.md",
+ "source": "Derived from ipa-cliff-notes.md (standard Modern Israeli Hebrew; typical TTS errors).",
+ "keypad": [
+  "ˈ",
+  "ʔ",
+  "ʁ",
+  "χ",
+  "ts",
+  "tʃ",
+  "dʒ",
+  "ʃ",
+  "ʒ",
+  "ɡ",
+  "j",
+  "a",
+  "e",
+  "i",
+  "o",
+  "u",
+  "ə"
+ ],
+ "symbols": [
+  {
+   "symbol": "χ",
+   "kind": "consonant",
+   "letters": "ח; כ / ך without dagesh",
+   "sounds_like": "Scottish \"loch\", German \"Bach\"",
+   "example": "חַנָּה ˈχana · לֶחֶם ˈleχem",
+   "common_errors": [
+    "tʃ (English \"ch\", as in chana masala)",
+    "k",
+    "h",
+    "silent",
+    "ħ is the Mizrahi pharyngeal for ח: a regional variant, not standard Israeli"
+   ]
+  },
+  {
+   "symbol": "ʁ",
+   "kind": "consonant",
+   "letters": "ר",
+   "sounds_like": "French \"r\", back of the throat",
+   "example": "רֶגַע ˈʁeɡa",
+   "common_errors": [
+    "ɹ (English r)",
+    "r (trilled: Mizrahi or older variant)"
+   ]
+  },
+  {
+   "symbol": "ts",
+   "kind": "consonant",
+   "letters": "צ",
+   "sounds_like": "\"ts\" in \"cats\"",
+   "example": "צָרִיךְ tsaˈʁiχ",
+   "common_errors": [
+    "s",
+    "z",
+    "tʃ"
+   ]
+  },
+  {
+   "symbol": "tʃ",
+   "kind": "consonant",
+   "letters": "צ׳",
+   "sounds_like": "\"ch\" in \"chips\"",
+   "example": "צ׳יפְּס tʃips",
+   "common_errors": [
+    "ts (apostrophe ignored)"
+   ]
+  },
+  {
+   "symbol": "ɡ",
+   "kind": "consonant",
+   "letters": "ג",
+   "sounds_like": "\"g\" in \"go\"",
+   "example": "גַּן ɡan",
+   "common_errors": [
+    "dʒ (English \"j\")"
+   ]
+  },
+  {
+   "symbol": "dʒ",
+   "kind": "consonant",
+   "letters": "ג׳",
+   "sounds_like": "\"j\" in \"jeans\"",
+   "example": "ג׳ינְס dʒins",
+   "common_errors": [
+    "ɡ (apostrophe ignored)"
+   ]
+  },
+  {
+   "symbol": "ʒ",
+   "kind": "consonant",
+   "letters": "ז׳",
+   "sounds_like": "\"s\" in \"measure\"",
+   "example": "ז׳וּרְנָל ʒuʁˈnal",
+   "common_errors": [
+    "z"
+   ]
+  },
+  {
+   "symbol": "ʃ",
+   "kind": "consonant",
+   "letters": "שׁ (dot right)",
+   "sounds_like": "\"sh\"",
+   "example": "שָׁלוֹם ʃaˈlom",
+   "common_errors": [
+    "s (shin/sin dot misread)"
+   ]
+  },
+  {
+   "symbol": "s",
+   "kind": "consonant",
+   "letters": "שׂ (dot left), ס",
+   "sounds_like": "\"s\"",
+   "example": "שָׂרָה saˈʁa",
+   "common_errors": [
+    "ʃ"
+   ]
+  },
+  {
+   "symbol": "ʔ",
+   "kind": "consonant",
+   "letters": "א, ע",
+   "sounds_like": "catch in the throat, often dropped",
+   "example": "אֲנִי ʔaˈni",
+   "common_errors": [
+    "ʕ (Arabic ayin: a Mizrahi variant for ע)",
+    "a hard ʔ where speech drops it is a style problem, not an error"
+   ]
+  },
+  {
+   "symbol": "h",
+   "kind": "consonant",
+   "letters": "ה",
+   "sounds_like": "\"h\", often dropped mid-word",
+   "example": "הוּא hu",
+   "common_errors": [
+    "dropped where it should be heard (word-initial ה)"
+   ]
+  },
+  {
+   "symbol": "b",
+   "kind": "consonant",
+   "letters": "בּ",
+   "sounds_like": "\"b\"",
+   "example": "בַּיִת ˈbajit",
+   "common_errors": []
+  },
+  {
+   "symbol": "v",
+   "kind": "consonant",
+   "letters": "ב (no dagesh), ו, וו",
+   "sounds_like": "\"v\"",
+   "example": "אָבִיב ʔaˈviv · וְ ve",
+   "common_errors": [
+    "b where v belongs (dagesh rule ignored)",
+    "w where v belongs"
+   ]
+  },
+  {
+   "symbol": "k",
+   "kind": "consonant",
+   "letters": "כּ, ק",
+   "sounds_like": "\"k\"",
+   "example": "כֶּלֶב ˈkelev · קָטָן kaˈtan",
+   "common_errors": [
+    "k where χ belongs (כ without dagesh)",
+    "q (Arabic-style uvular) for ק"
+   ]
+  },
+  {
+   "symbol": "p",
+   "kind": "consonant",
+   "letters": "פּ",
+   "sounds_like": "\"p\"",
+   "example": "פֶּה pe",
+   "common_errors": []
+  },
+  {
+   "symbol": "f",
+   "kind": "consonant",
+   "letters": "פ / ף (no dagesh)",
+   "sounds_like": "\"f\"",
+   "example": "סֵפֶר ˈsefeʁ",
+   "common_errors": [
+    "p where f belongs"
+   ]
+  },
+  {
+   "symbol": "t",
+   "kind": "consonant",
+   "letters": "ט, ת",
+   "sounds_like": "\"t\"",
+   "example": "",
+   "common_errors": [
+    "θ (English \"th\") for ת"
+   ]
+  },
+  {
+   "symbol": "w",
+   "kind": "consonant",
+   "letters": "ו / וו in loanwords",
+   "sounds_like": "\"w\"",
+   "example": "ווֹטְסְאַפּ ˈwatsap",
+   "common_errors": []
+  },
+  {
+   "symbol": "j",
+   "kind": "consonant",
+   "letters": "י (consonant)",
+   "sounds_like": "English \"y\"",
+   "example": "יֶלֶד ˈjeled",
+   "common_errors": [
+    "dʒ (an English reading of \"j\")"
+   ]
+  },
+  {
+   "symbol": "a",
+   "kind": "vowel",
+   "letters": "ַ ָ ֲ",
+   "sounds_like": "\"a\" in \"father\", short",
+   "example": "",
+   "common_errors": [
+    "æ (\"cat\")",
+    "ə (reduced when unstressed)"
+   ]
+  },
+  {
+   "symbol": "e",
+   "kind": "vowel",
+   "letters": "ֶ ֵ ֱ, spoken shva",
+   "sounds_like": "\"e\" in \"bed\"",
+   "example": "",
+   "common_errors": [
+    "eɪ (English \"day\")",
+    "ə"
+   ]
+  },
+  {
+   "symbol": "i",
+   "kind": "vowel",
+   "letters": "ִ",
+   "sounds_like": "\"ee\", short",
+   "example": "",
+   "common_errors": [
+    "ɪ (\"bit\")"
+   ]
+  },
+  {
+   "symbol": "o",
+   "kind": "vowel",
+   "letters": "ֹ וֹ, kamatz katan",
+   "sounds_like": "\"o\", pure, not gliding",
+   "example": "",
+   "common_errors": [
+    "oʊ (English \"go\")"
+   ]
+  },
+  {
+   "symbol": "u",
+   "kind": "vowel",
+   "letters": "ֻ וּ",
+   "sounds_like": "\"oo\", short",
+   "example": "",
+   "common_errors": [
+    "ʊ (\"put\")"
+   ]
+  },
+  {
+   "symbol": "ej",
+   "kind": "vowel",
+   "letters": "ֵי",
+   "sounds_like": "\"ay\"",
+   "example": "בֵּיצָה ˈbejtsa",
+   "common_errors": [
+    "e (diphthong lost)"
+   ]
+  },
+  {
+   "symbol": "aj",
+   "kind": "vowel",
+   "letters": "ַי",
+   "sounds_like": "\"eye\"",
+   "example": "בַּיִת ˈbajit",
+   "common_errors": [
+    "a (diphthong lost)"
+   ]
+  },
+  {
+   "symbol": "ə",
+   "kind": "vowel",
+   "letters": "(none in standard Israeli Hebrew)",
+   "sounds_like": "the reduced \"uh\" of English",
+   "example": "",
+   "common_errors": [
+    "not a Hebrew vowel: write it only to record what a voice wrongly said"
+   ]
+  },
+  {
+   "symbol": "ˈ",
+   "kind": "stress",
+   "letters": "",
+   "sounds_like": "put it before the stressed syllable",
+   "example": "ʃaˈlom · ˈsefeʁ",
+   "common_errors": [
+    "mil'el words (segolates sefer, yeled, boker; past tense hayiti) stressed on the last syllable: tag as stress"
+   ]
+  }
+ ]
+}
