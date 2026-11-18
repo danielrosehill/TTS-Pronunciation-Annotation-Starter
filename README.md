@@ -112,6 +112,14 @@ The same pattern works for any audio judgement where speaking is faster than cli
 choices, noise removal. It is the `spoken-annotations` skill of the ai-eval plugin; the method as a whole is its
 `screen-then-rank` skill.
 
+### Reader: a public page for the annotations
+
+`viewer/index.html` is a static, read-only page for the annotations dataset: each annotated clip with its verdict,
+reasons, word tags and note, plus the spoken notes (playable, with a lightly tidied transcript and the verbatim one on
+request). It fetches everything live from the Hub. Deploy it as a static Space with a `config.json`
+(`title, intro, notes_repo, evals_registry, font_stack, annotator`). Example:
+[danielrosehill/Hebrew-TTS-Listening-Notes-Reader](https://huggingface.co/spaces/danielrosehill/Hebrew-TTS-Listening-Notes-Reader).
+
 ### Results
 
 - **Screen:**

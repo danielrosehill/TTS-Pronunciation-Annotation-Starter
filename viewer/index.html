@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Annotations</title>
+<!--
+  Read-only reader for the annotations an annotation Space writes (public dataset). Static: deploy as a static HF Space
+  with a config.json beside it ({title, intro, notes_repo, evals_registry, rtl, font_stack, annotator}). Everything is
+  fetched live from the Hub, so it never needs rebuilding.
+  Reads, per evaluation: the clip manifest (registry `data_json`), and from the dataset annotations/<eval_id>/
+  screen.jsonl + screen-voice.jsonl (verdicts; latest per run and sentence wins), pairs.jsonl, voice.jsonl (spoken notes)
+  + voice-applied.jsonl (their transcripts, cleaned transcripts and readings).
+-->
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --line:#e1e4ec; --fg:#1b1f2a; --dim:#4f5768; --acc:#3d6ef5; --good:#2b8a3e; --bad:#c92a2a; --nik:#8a5a00; --font:system-ui,sans-serif; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1116; --card:#181b23; --line:#2b303c; --fg:#e8eaf0; --dim:#a7afc0; --acc:#6e97ff; --good:#69db7c; --bad:#ff6b6b; --nik:#ffd479; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  header { max-width:1000px; margin:auto; padding:22px 18px 6px; }
+  h1 { margin:0 0 6px; font-size:26px; }
+  .intro { color:var(--dim); margin:0 0 12px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0; }
+  select, input, button { font:inherit; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  main { max-width:1000px; margin:auto; padding:0 18px 60px; }
+  .stats { color:var(--dim); font-size:15px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:14px 0; }
+  .head { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:baseline; }
+  .voice { font-weight:700; font-size:19px; }
+  .meta { color:var(--dim); font-size:14px; }
+  .he { font-family:var(--font); direction:rtl; text-align:right; font-size:26px; color:var(--nik); margin:6px 0 2px; }
+  .gloss { color:var(--dim); font-size:15px; }
+  .verdict { display:inline-block; font-weight:700; padding:2px 12px; border-radius:20px; color:#fff; font-size:15px; }
+  .pass { background:var(--good); } .fail { background:var(--bad); } .none { background:var(--dim); }
+  .chip { display:inline-block; border:1px solid var(--line); border-radius:14px; padding:1px 10px; font-size:14px; margin:2px 4px 2px 0; }
+  .row { display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center; margin-top:10px; }
+  .row .lbl { color:var(--dim); font-size:14px; }
+  audio { width:100%; height:36px; }
+  .note { white-space:pre-wrap; }
+  .words { margin-top:8px; font-size:15px; border-collapse:collapse; width:100%; }
+  .words td, .words th { border-top:1px solid var(--line); padding:5px 6px; text-align:left; }
+  .words .w { font-family:var(--font); font-size:19px; }
+  details summary { cursor:pointer; color:var(--acc); font-size:14px; margin-top:6px; }
+  .raw { color:var(--dim); font-size:14px; white-space:pre-wrap; }
+  @media (max-width:640px) { .row { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Annotations</h1>
+  <p class="intro" id="intro"></p>
+  <div class="bar">
+    <select id="ev"></select>
+    <select id="by"><option value="sentence">By sentence</option><option value="voice">By voice</option></select>
+    <select id="vf"><option value="">All verdicts</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="voicenote">With a voice note</option></select>
+    <input id="q" placeholder="Filter (voice, word, reason…)">
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+<main id="main"><p>Loading…</p></main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let C, EV = [], D = null, ROWS = [];
+const res = (path) => `https://huggingface.co/datasets/${C.notes_repo}/resolve/main/${path}`;
+async function lines(url) { const r = await fetch(url + "?t=" + Date.now()); if (!r.ok) return []; return (await r.text()).split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l)); }
+
+async function loadEval(id) {
+  const e = EV.find((x) => x.eval_id === id);
+  const [data, screen, sv, voice, va, pairs] = await Promise.all([
+    fetch(e.data_json).then((r) => r.json()),
+    ...["screen", "screen-voice", "voice", "voice-applied", "pairs"].map((k) => lines(res(`annotations/${id}/${k}.jsonl`)))]);
+  D = data; C.clips_base = e.data_json.replace(/[^/]*$/, ""); // clip paths in the manifest are relative to it
+  const latest = {};
+  for (const r of [...screen, ...sv].sort((a, b) => (a.saved || "").localeCompare(b.saved || ""))) latest[r.run + "|" + r.sentence] = r;
+  const proc = {};
+  for (const r of va) proc[r.target] = Object.assign(proc[r.target] || {}, r.type === "processed" ? { transcript: r.transcript, clean: r.transcript_clean, applied: r.applied } : { clean: r.transcript_clean });
+  const notesBy = {};
+  for (const n of voice.filter((n) => !n.type && n.pass !== "rank")) (notesBy[n.run + "|" + n.sentence] ||= []).push(Object.assign({}, n, proc[n.id] || {}));
+  const keys = new Set([...Object.keys(latest), ...Object.keys(notesBy)]);
+  ROWS = [...keys].map((k) => { const [run, sentence] = k.split("|"); return { run, sentence, a: latest[k] || null, notes: notesBy[k] || [] }; })
+    .filter((x) => x.sentence !== "overall" || x.a);
+  $("stats").textContent = `${Object.keys(latest).length} clips annotated of ${data.models.reduce((n, m) => n + Object.keys(m.clips).length, 0)} · ` +
+    `${Object.values(latest).filter((r) => r.verdict === "pass").length} pass, ${Object.values(latest).filter((r) => r.verdict === "fail").length} fail · ` +
+    `${voice.filter((n) => !n.type).length} voice notes · ${pairs.filter((p) => p.type !== "undo").length} comparisons` + (C.annotator ? ` · annotator: ${C.annotator}` : "");
+  render();
+}
+
+function card(x) {
+  const m = D.models.find((m) => m.slug === x.run) || { name: x.run, clips: {}, run: {} };
+  const s = D.sentences.find((s) => s.id === x.sentence) || {};
+  const a = x.a || {};
+  const v = a.verdict || "none";
+  const clip = m.clips?.[x.sentence] ? (C.clips_base + m.clips[x.sentence]) : null;
+  const words = (a.word_issues || []).map((w) => `<tr><td class="w">${esc(w.word || (w.words || []).join(" "))}</td><td>${esc(w.type)}</td><td>${
+      w.type === "stress" ? `heard syllable ${esc(w.heard)}, should be ${esc(w.correct)}` : w.ipa_heard || w.ipa_expected ? `heard /${esc(w.ipa_heard || "?")}/, expected /${esc(w.ipa_expected || "?")}/` : esc((w.issues || []).join(", "))
+    }</td><td>${esc(w.comment)}</td></tr>`).join("");
+  const notes = x.notes.map((n) => `<div class="row"><div class="lbl">Voice note<br><span class="meta">${esc((n.saved || "").replace("T", " ").slice(0, 16))}</span></div><div>
+      <audio controls preload="none" src="${res(n.audio)}"></audio>
+      <div class="note">${esc(n.clean || n.transcript || "(not transcribed yet)")}</div>
+      ${n.transcript && n.clean ? `<details><summary>Verbatim transcript</summary><div class="raw">${esc(n.transcript)}</div></details>` : ""}</div></div>`).join("");
+  return `<div class="card">
+    <div class="head"><div><span class="voice">${esc(m.name)}</span> <span class="meta">· ${m.run?.input === "nikud" ? "given the nikud" : "plain text"}${m.run?.generated_via ? " · " + esc(m.run.generated_via) : ""}</span></div>
+      <div><span class="verdict ${v}">${v === "none" ? "not screened" : v.toUpperCase()}</span></div></div>
+    <div class="he">${esc(s.text_nikud || s.text)}</div><div class="gloss">${esc(x.sentence)} · ${esc(s.english)}</div>
+    ${clip ? `<div class="row"><div class="lbl">Clip</div><audio controls preload="none" src="${clip}"></audio></div>` : ""}
+    ${(a.fail_reasons || []).length || a.gender ? `<div class="row"><div class="lbl">Annotation</div><div>${(a.fail_reasons || []).map((r) => `<span class="chip">${esc(r)}</span>`).join("")}${a.gender ? `<span class="chip">voice: ${esc(a.gender)}</span>` : ""}</div></div>` : ""}
+    ${a.note ? `<div class="row"><div class="lbl">Note</div><div class="note">${esc(a.note)}</div></div>` : ""}
+    ${words ? `<table class="words"><tr><th>Word</th><th>Type</th><th>Detail</th><th>Comment</th></tr>${words}</table>` : ""}
+    ${notes}
+    <div class="meta" style="margin-top:8px">${a.saved ? `Saved ${esc(a.saved.replace("T", " ").slice(0, 16))}` : ""}${a.annotator ? ` · ${esc(a.annotator)}` : ""}${String(a.source || "").includes("voice") ? " · from a voice note" : ""}</div>
+  </div>`;
+}
+
+function render() {
+  const f = $("vf").value, q = $("q").value.trim().toLowerCase(), by = $("by").value;
+  let rows = ROWS.filter((x) => !f || (f === "voicenote" ? x.notes.length : x.a?.verdict === f));
+  if (q) rows = rows.filter((x) => JSON.stringify([x, D.models.find((m) => m.slug === x.run)?.name]).toLowerCase().includes(q));
+  const order = (x) => by === "sentence" ? x.sentence + x.run : (D.models.find((m) => m.slug === x.run)?.name || x.run) + x.sentence;
+  rows.sort((a, b) => order(a).localeCompare(order(b)));
+  $("main").innerHTML = rows.length ? rows.map(card).join("") : "<p>No annotations match.</p>";
+  document.querySelectorAll("audio").forEach((a) => a.addEventListener("play", () => document.querySelectorAll("audio").forEach((b) => b !== a && b.pause())));
+}
+
+(async function boot() {
+  C = await fetch("config.json").then((r) => r.json());
+  document.documentElement.style.setProperty("--font", C.font_stack || "system-ui, sans-serif");
+  $("title").textContent = C.title || "Annotations"; document.title = C.title || "Annotations";
+  $("intro").innerHTML = C.intro || "";
+  EV = await lines(C.evals_registry);
+  $("ev").innerHTML = EV.map((e) => `<option value="${esc(e.eval_id)}">${esc(e.title)} (${esc(e.date)})</option>`).join("");
+  ["by", "vf"].forEach((id) => $(id).addEventListener("change", render)); $("q").addEventListener("input", render);
+  $("ev").addEventListener("change", () => loadEval($("ev").value));
+  await loadEval(EV[0].eval_id);
+})();
+</script>
+</body>
+</html>
