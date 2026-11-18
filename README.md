@@ -130,8 +130,8 @@ the ones out at Screening with their fail reasons and the annotator's words, gro
 (`title, intro, notes_repo, evals_registry, eval_id, rank_sentence, font_stack, annotator, categories, links, method`,
 and optionally `contact`: an HTML card, e.g. "want your model included?" with an address and caveats).
 If the clip manifest gives runs a `run.voice_gender` (`female` / `male`), every row is tagged with it and a **Best by
-voice** panel shows the top Arena voice per gender (unbeaten first, then score), or how many of that gender are still
-waiting. Give the same model a second voice as its own run (e.g. `<model>-male`) to rank it separately.
+voice** panel shows the top unbeaten Arena voice per gender (a voice that is out never counts), or how many of that
+gender are still waiting. Give the same model a second voice as its own run (e.g. `<model>-male`) to rank it separately.
 Example: [danielrosehill/Hebrew-TTS-Leaderboard](https://huggingface.co/spaces/danielrosehill/Hebrew-TTS-Leaderboard).
 
 ### Results

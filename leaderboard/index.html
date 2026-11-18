@@ -73,7 +73,7 @@
 <div class="stages" id="stages"></div>
 
 <div id="bestWrap" hidden><h2>Best by voice</h2>
-<p class="sub">The top Arena voice for each voice gender: unbeaten first, then by score. A model can lead with one voice and not the other.</p>
+<p class="sub">The top unbeaten Arena voice for each voice gender. A model can lead with one voice and not the other.</p>
 <div class="best" id="best"></div></div>
 
 <h2>Arena ranking</h2>
@@ -201,16 +201,16 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
         <td>${lostTo[s] ? `<span class="chip bad">out</span><div class="meta">lost to ${esc(M[lostTo[s]]?.name || lostTo[s])}</div>` : `<span class="chip" style="border-color:var(--good);color:var(--good)">unbeaten</span>`}</td><td class="n">${w}–${t}–${mine.length - w - t}</td><td class="n">${costCell(m)}</td><td class="hide-m">${why}</td></tr>`;
     }).join("") + "</tbody>";
 
-  // Best by voice gender: first in the Arena order (unbeaten first, then BT); else the next one waiting or unscreened
+  // Best by voice gender: the first unbeaten voice of that gender in the Arena order; a voice that is out never counts
   const genders = [...new Set(D.models.map((m) => m.run?.voice_gender).filter(Boolean))].sort();
   if (genders.length) {
     $("bestWrap").hidden = false;
     $("best").innerHTML = genders.map((g) => {
-      const top = ranked.find((s) => M[s].run?.voice_gender === g);
+      const top = ranked.find((s) => M[s].run?.voice_gender === g && !lostTo[s]);
       if (top) { const m = M[top]; return `<div><h4>Best ${esc(g)} voice</h4>${btn(m, rs)} ${nameCell(m)}<div class="meta">#${ranked.indexOf(top) + 1} in the Arena · ${lostTo[top] ? "out" : "unbeaten"} · ${costCell(m)}</div></div>`; }
       const w = D.models.filter((m) => m.run?.voice_gender === g && status[m.slug] !== "out");
       const nPass = w.filter((m) => status[m.slug] === "pass").length;
-      return `<div><h4>Best ${esc(g)} voice</h4><div class="meta">Not decided yet: no ${esc(g)} voice has played in the Arena. ${nPass} passed Screening, ${w.length - nPass} waiting for it.</div></div>`;
+      return `<div><h4>Best ${esc(g)} voice</h4><div class="meta">Not decided yet: no unbeaten ${esc(g)} voice in the Arena. ${nPass} passed Screening and wait for the Arena, ${w.filter((m) => status[m.slug] === "pending").length} wait for Screening.</div></div>`;
     }).join("");
   }
 
