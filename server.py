@@ -212,7 +212,7 @@ def get_language():
 
 @app.get("/api/evals")
 def get_evals():
-    rows = []
+    out = []
     for e in evals():
         r = {k: e.get(k) for k in ("eval_id", "title", "date", "task", "n_models", "n_runs")}
         try:
@@ -222,8 +222,8 @@ def get_evals():
             r["n_pairs"] = sum(1 for n in rows(e["eval_id"], "pairs") if n.get("type") != "undo")
         except Exception as ex:
             r["error"] = str(ex)[:200]
-        rows.append(r)
-    return rows
+        out.append(r)
+    return out
 
 
 @app.get("/api/eval/{eval_id}")
