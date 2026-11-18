@@ -77,7 +77,8 @@ There are two ways through:
   2. Any clip with a head-to-head loss is knocked out, at once: the opening round skips pairs with a clip already out.
   3. The **leader** is the unbeaten clip with the most wins; Bradley–Terry breaks a tie between leaders. It then plays
      each unbeaten challenger it hasn't met.
-  4. Each unbeaten finalist that drew with the leader gets one tie-break rematch against it.
+  4. Each unbeaten finalist that drew with the leader gets one tie-break rematch against it, on the same clips.
+     `rank.rematch: false` turns that off (the same audio tends to get the same call): a draw stays a draw.
 
   A sentence is decided long before all n(n−1)/2 pairs have been voted. If every clip has a loss (a cycle), or the
   rematch also draws, Bradley–Terry decides.
@@ -197,7 +198,7 @@ the matching config fields: `APP_TITLE`, `NOTES_REPO`, `EVALS_REGISTRY` and `MAN
 | `tag_reasons` | Maps a word-issue type to a category, e.g. `{"stress": "Wrong emphasis (stress)"}`. A detail added to an unjudged clip then marks it Fail with that category. |
 | `rank_reject_reason` | The category written for late fails from "both bad" |
 | `gender` | `{label, options: {value: key}}` or `null` |
-| `rank` | `{pairing: "playoff" \| "all", group_by: "<run field>" (optional brackets, e.g. "voice_gender")}` |
+| `rank` | `{pairing: "playoff" \| "all", rematch: true \| false, group_by: "<run field>" (optional brackets, e.g. "voice_gender")}` |
 | `axes` | Optional quality rows `[{key, type, label, hint, short?}]`, used when `passes.quality` is on. See the table below. |
 | `minor_tags` | The word-issue tags offered under "Other" |
 | `reference_label` | How the machine word reference is labelled |

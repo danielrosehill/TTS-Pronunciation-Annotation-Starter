@@ -578,7 +578,9 @@ function scheduleIn(sid, items) {
   if (unbeaten.length === 1) { res.status = "decided"; res.total = res.done; return res; }
   // Every unbeaten finalist that drew with the leader gets one tie-break rematch (fixed 2026-11-18: only the first
   // one did, so a bracket stopped at "tie" while other finalists still owed theirs).
-  const rivals = unbeaten.filter((x) => x !== leader && (met.get(pairId(sid, leader, x)) || 0) < 2);
+  // rank.rematch: false (Daniel, 2026-11-18: "it's repeating things I've done before"): no rematch on the same clips,
+  // since identical audio gets the same call; a draw stays a draw and Bradley-Terry orders the finalists.
+  const rivals = C.rank?.rematch === false ? [] : unbeaten.filter((x) => x !== leader && (met.get(pairId(sid, leader, x)) || 0) < 2);
   if (rivals.length) { res.status = "tiebreak"; res.pairs = rivals.map((x) => sides(sid, x, leader)); res.total = res.done + res.pairs.length; return res; }
   res.status = "tie"; res.total = res.done; return res;
 }
