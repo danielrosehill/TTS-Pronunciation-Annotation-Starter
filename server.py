@@ -40,6 +40,7 @@ DEFAULTS = {
     "gender": {"label": "Voice gender", "options": {"female": "f", "male": "m", "unclear": "u"}},
     # pairing "playoff" (default): opening round, knock out any head-to-head loss, leader vs each unbeaten challenger,
     # one tie-break rematch between drawn finalists. "all": every pair of passing clips.
+    # Optional "group_by": "voice_gender" (any run field): brackets; voices only meet the same value, votes across are ignored.
     "rank": {"pairing": "playoff"},
     "reference_label": "Reference (machine): check it",
     "notes_repo": None,

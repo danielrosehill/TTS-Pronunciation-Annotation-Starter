@@ -11,7 +11,8 @@
   config.json: {title, intro, notes_repo, evals_registry, eval_id (optional: defaults to the registry's first row),
                 rank_sentence (the Arena item, e.g. "p01"), font_stack, annotator, links: [{label, url}],
                 categories: {"<provenance.category>": "<heading>"}, method (HTML),
-                contact (HTML, optional: a card for "want your model included?" and caveats)}
+                contact (HTML, optional: a card for "want your model included?" and caveats),
+                group_by (optional, e.g. "voice_gender": Arena brackets, as rank.group_by in the app), group_by_label}
   Voice gender: a run's run.voice_gender ("female" | "male", from the clip manifest) adds a "Best by voice" panel with the
   top Arena voice for each gender, and a gender tag on every row. Runs without it are left out of that panel.
 
@@ -172,31 +173,37 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
   // Arena: valid votes (undo cancels), explanation rows by target vote
   const all = [...pairs, ...pv];
   const undone = new Set(all.filter((p) => p.type === "undo").map((p) => p.target));
-  const votes = all.filter((p) => p.type !== "undo" && p.type !== "explanation" && p.outcome && p.outcome !== "both_bad" && !undone.has(p.id) && M[p.left] && M[p.right]);
+  // Brackets (config group_by, e.g. "voice_gender"): voices only meet the same bracket; a vote across brackets is
+  // ignored (kept in the data), and each bracket gets its own fit and its own section of the table.
+  const GB = C.group_by || null, bracketOf = (slug) => (GB ? String(M[slug]?.run?.[GB] ?? M[slug]?.[GB] ?? "unspecified") : "");
+  const votes = all.filter((p) => p.type !== "undo" && p.type !== "explanation" && p.outcome && p.outcome !== "both_bad" && !undone.has(p.id) && M[p.left] && M[p.right] && bracketOf(p.left) === bracketOf(p.right));
   const expl = {}; for (const x of all) if (x.type === "explanation") expl[x.target] = x;
   const ranked = [...new Set(votes.flatMap((v) => [v.left, v.right]))];
-  const bt = btFit(votes, ranked);
+  const brackets = [...new Set(ranked.map(bracketOf))].sort();
+  const bt = Object.assign({}, ...brackets.map((g) => btFit(votes.filter((v) => bracketOf(v.left) === g), ranked.filter((x) => bracketOf(x) === g))));
   ranked.sort((a, b) => bt[b] - bt[a]);
   const lo = Math.min(...ranked.map((s) => bt[s])), hi = Math.max(...ranked.map((s) => bt[s]));
   // Playoff rule (as in the annotation app): a head-to-head loss puts a voice out; unbeaten voices are still in.
   const lostTo = {}; for (const v of [...votes].sort((a, b) => (a.saved || "").localeCompare(b.saved || ""))) {
     if (v.outcome === "left" && !lostTo[v.right]) lostTo[v.right] = v.left;
     if (v.outcome === "right" && !lostTo[v.left]) lostTo[v.left] = v.right; }
-  ranked.sort((a, b) => (!!lostTo[a] - !!lostTo[b]) || (bt[b] - bt[a]));
+  ranked.sort((a, b) => bracketOf(a).localeCompare(bracketOf(b)) || (!!lostTo[a] - !!lostTo[b]) || (bt[b] - bt[a]));
   const rs = C.rank_sentence || votes[0]?.sentence;
   const sent = D.sentences.find((s) => s.id === rs);
   $("arenaSub").innerHTML = `Blind A vs B on ${sent ? `the round-${esc(sent.round || 2)} item <b>${esc(rs)}</b>` : "the Arena item"}, ${votes.length} comparison${votes.length === 1 ? "" : "s"} so far. ` +
-    `Cost is per 1,000 characters of Hebrew as of the date on hover: list price for APIs, warm Modal compute for self-hosted models. Unbeaten voices are listed first (a head-to-head loss puts a voice out); within each group, by Bradley-Terry strength on an Elo-like scale (1000 = average of those ranked); with this few votes, read the order, not the gaps.` +
+    `Cost is per 1,000 characters of Hebrew as of the date on hover: list price for APIs, warm Modal compute for self-hosted models. ${GB ? `Voices only meet voices of the same ${esc(C.group_by_label || GB)} (${brackets.map(esc).join(", ")}), each in its own bracket and section below; a vote across brackets does not count. ` : ""}Unbeaten voices are listed first (a head-to-head loss puts a voice out); within each group, by Bradley-Terry strength on an Elo-like scale (1000 = average of those ranked); with this few votes, read the order, not the gaps.` +
     (sent ? `<details style="margin-top:6px"><summary>The text</summary><div class="he">${esc(sent.text_nikud || sent.text)}</div><div class="meta">${esc(sent.english || "")}</div></details>` : "");
   $("arena").innerHTML = `<thead><tr><th>#</th><th></th><th>Voice</th><th>Score</th><th>Status</th><th>W–T–L</th><th>$ / 1k chars</th><th class="hide-m">Why it won or lost (annotator)</th></tr></thead><tbody>` +
-    ranked.map((s, i) => {
+    ranked.map((s, k) => {
+      const g = bracketOf(s), i = k - ranked.findIndex((x) => bracketOf(x) === g);
+      const head = GB && !i ? `<tr><th colspan="8" style="text-align:left">${esc(g[0].toUpperCase() + g.slice(1))} voices</th></tr>` : "";
       const m = M[s], mine = votes.filter((v) => v.left === s || v.right === s);
       const w = mine.filter((v) => (v.outcome === "left" && v.left === s) || (v.outcome === "right" && v.right === s)).length, t = mine.filter((v) => v.outcome === "tie").length;
       const why = mine.map((v) => expl[v.id]).filter(Boolean).map((x) => {
         const won = (x.preference === "left" ? x.left : x.right) === s, other = M[won ? (x.left === s ? x.right : x.left) : (x.preference === "left" ? x.left : x.right)];
         return `<div class="quote">${won ? "beat" : "lost to"} ${esc(other?.name || "")}: “${esc(x.note)}”</div>`;
       }).join("");
-      return `<tr><td class="rank ${i ? "" : "r1"}">${i + 1}</td><td>${btn(m, rs)}</td><td>${nameCell(m)}</td>
+      return `${head}<tr><td class="rank ${i ? "" : "r1"}">${i + 1}</td><td>${btn(m, rs)}</td><td>${nameCell(m)}</td>
         <td class="n">${bt[s]}<div class="bar" style="width:${hi > lo ? 20 + 80 * (bt[s] - lo) / (hi - lo) : 60}px"></div></td>
         <td>${lostTo[s] ? `<span class="chip bad">out</span><div class="meta">lost to ${esc(M[lostTo[s]]?.name || lostTo[s])}</div>` : `<span class="chip" style="border-color:var(--good);color:var(--good)">unbeaten</span>`}</td><td class="n">${w}–${t}–${mine.length - w - t}</td><td class="n">${costCell(m)}</td><td class="hide-m">${why}</td></tr>`;
     }).join("") + "</tbody>";
@@ -207,7 +214,7 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
     $("bestWrap").hidden = false;
     $("best").innerHTML = genders.map((g) => {
       const top = ranked.find((s) => M[s].run?.voice_gender === g && !lostTo[s]);
-      if (top) { const m = M[top]; return `<div><h4>Best ${esc(g)} voice</h4>${btn(m, rs)} ${nameCell(m)}<div class="meta">#${ranked.indexOf(top) + 1} in the Arena · ${lostTo[top] ? "out" : "unbeaten"} · ${costCell(m)}</div></div>`; }
+      if (top) { const m = M[top]; return `<div><h4>Best ${esc(g)} voice</h4>${btn(m, rs)} ${nameCell(m)}<div class="meta">#${ranked.indexOf(top) - ranked.findIndex((x) => bracketOf(x) === bracketOf(top)) + 1} in ${GB ? "its bracket" : "the Arena"} · ${lostTo[top] ? "out" : "unbeaten"} · ${costCell(m)}</div></div>`; }
       const w = D.models.filter((m) => m.run?.voice_gender === g && status[m.slug] !== "out");
       const nPass = w.filter((m) => status[m.slug] === "pass").length;
       return `<div><h4>Best ${esc(g)} voice</h4><div class="meta">Not decided yet: no unbeaten ${esc(g)} voice in the Arena. ${nPass} passed Screening and wait for the Arena, ${w.filter((m) => status[m.slug] === "pending").length} wait for Screening.</div></div>`;

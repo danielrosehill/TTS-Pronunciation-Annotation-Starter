@@ -82,6 +82,11 @@ There are two ways through:
   A sentence is decided long before all n(n−1)/2 pairs have been voted. If every clip has a loss (a cycle), or the
   rematch also draws, Bradley–Terry decides.
 - **`rank.pairing: "all"`:** serves every pair of passing clips instead.
+- **Brackets, `rank.group_by`** (e.g. `"voice_gender"`): voices only meet voices with the same value of that run field
+  (`run.<field>` in the clip manifest). Each bracket runs its own play-off, Results fits Bradley–Terry within brackets,
+  and a vote across brackets is kept in the data but ignored. Runs without the field share one bracket, `unspecified`.
+  Why: a first-pass judgement between a male and a female voice is mostly a judgement of the voices, not the model.
+  Pair rows record their `bracket`.
 
 ### Voice notes: say it instead of clicking it
 
@@ -128,7 +133,9 @@ annotator's explanations of each win and loss), the voices waiting for the Arena
 the ones out at Screening with their fail reasons and the annotator's words, grouped by `provenance.category`
 (e.g. TTS models vs multimodal native-audio models). Deploy as a static Space with a `config.json`
 (`title, intro, notes_repo, evals_registry, eval_id, rank_sentence, font_stack, annotator, categories, links, method`,
-and optionally `contact`: an HTML card, e.g. "want your model included?" with an address and caveats).
+and optionally `contact`: an HTML card, e.g. "want your model included?" with an address and caveats; and `group_by`,
+e.g. `"voice_gender"`, to match the app's Arena brackets: the table gets one section per bracket, each with its own
+Bradley-Terry fit, and votes across brackets are left out).
 If the clip manifest gives runs a `run.voice_gender` (`female` / `male`), every row is tagged with it and a **Best by
 voice** panel shows the top unbeaten Arena voice per gender (a voice that is out never counts), or how many of that
 gender are still waiting. Give the same model a second voice as its own run (e.g. `<model>-male`) to rank it separately.
@@ -184,7 +191,7 @@ the matching config fields: `APP_TITLE`, `NOTES_REPO`, `EVALS_REGISTRY` and `MAN
 | `tag_reasons` | Maps a word-issue type to a category, e.g. `{"stress": "Wrong emphasis (stress)"}`. A detail added to an unjudged clip then marks it Fail with that category. |
 | `rank_reject_reason` | The category written for late fails from "both bad" |
 | `gender` | `{label, options: {value: key}}` or `null` |
-| `rank` | `{pairing: "playoff" \| "all"}` |
+| `rank` | `{pairing: "playoff" \| "all", group_by: "<run field>" (optional brackets, e.g. "voice_gender")}` |
 | `axes` | Optional quality rows `[{key, type, label, hint, short?}]`, used when `passes.quality` is on. See the table below. |
 | `minor_tags` | The word-issue tags offered under "Other" |
 | `reference_label` | How the machine word reference is labelled |

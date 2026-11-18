@@ -532,8 +532,26 @@ function sides(sid, a, b) { return rng(pairId(sid, a, b))() < 0.5 ? [a, b] : [b,
 // opening round where every survivor plays once (an odd one twice); out = any head-to-head loss; leader = the unbeaten
 // item with most wins (Bradley-Terry breaks ties); next = leader vs every unbeaten item it hasn't met; a draw between
 // unbeaten finalists gets one tie-break rematch. `pairing: "all"` serves every pair instead.
+// Brackets (rank.group_by, e.g. "voice_gender"; Daniel, 2026-11-18: hard to judge a male voice against a female one):
+// voices only meet voices with the same value of that run field, each bracket runs its own play-off, and a vote across
+// brackets is ignored. Runs without the field share one bracket, "unspecified".
+const groupBy = () => C.rank?.group_by || null;
+function bracketOf(slug) { const f = groupBy(), m = runBy(slug); return f ? String(m?.run?.[f] ?? m?.[f] ?? "unspecified") : ""; }
 function schedule(sid) {
-  const items = passing(sid), vs = sentVotes(sid, items);
+  const items = passing(sid);
+  if (!groupBy()) return scheduleIn(sid, items);
+  const groups = {}; items.forEach((x) => (groups[bracketOf(x)] ||= []).push(x));
+  const parts = Object.keys(groups).sort().map((g) => Object.assign(scheduleIn(sid, groups[g]), { bracket: g }));
+  const live = parts.find((p) => p.pairs.length) || null;
+  const res = { items, done: parts.reduce((a, p) => a + p.done, 0), pairs: parts.flatMap((p) => p.pairs), brackets: parts,
+    unbeaten: parts.flatMap((p) => p.unbeaten), leader: (live || parts[0])?.leader || null, bracket: live?.bracket || null };
+  res.total = res.done + res.pairs.length;
+  res.status = live ? live.status : !items.length ? "empty" : parts.every((p) => p.status === "single") ? "single" : "decided";
+  res.label = parts.map((p) => `${p.bracket}: ${STATUS[p.status] || p.status}${p.pairs.length ? ` (${p.pairs.length})` : ""}`).join(" · ");
+  return res;
+}
+function scheduleIn(sid, items) {
+  const vs = sentVotes(sid, items);
   const met = new Map(); vs.forEach((v) => { const k = pairId(sid, v.left, v.right); met.set(k, (met.get(k) || 0) + 1); });
   const res = { items, done: vs.length, pairs: [], status: "open", leader: null, unbeaten: items.slice() };
   if (items.length < 2) { res.status = items.length ? "single" : "empty"; res.leader = items[0] || null; return res; }
@@ -604,7 +622,7 @@ function renderRank() {
   const all = ss.map((sid) => schedule(sid));
   const pend = all.reduce((a, x) => a + x.pairs.length, 0), done = all.reduce((a, x) => a + x.done, 0);
   $("rankFill").style.width = (done + pend ? 100 * done / (done + pend) : 0) + "%";
-  $("rankPick").innerHTML = ss.map((sid, i) => `<option value="${esc(sid)}" ${sid === S.rank.sid ? "selected" : ""}>${esc(sid)} · ${esc(STATUS[all[i].status] || all[i].status)}${all[i].pairs.length ? ` (${all[i].pairs.length} to vote)` : ""}</option>`).join("");
+  $("rankPick").innerHTML = ss.map((sid, i) => `<option value="${esc(sid)}" ${sid === S.rank.sid ? "selected" : ""}>${esc(sid)} · ${esc(all[i].label || STATUS[all[i].status] || all[i].status)}${all[i].pairs.length ? ` (${all[i].pairs.length} to vote)` : ""}</option>`).join("");
   const sid = S.rank.sid;
   if (!sid) {
     $("rankBody").hidden = true; $("rankEmpty").hidden = false;
@@ -612,14 +630,14 @@ function renderRank() {
     $("rankWhere").textContent = ""; return;
   }
   const sc = schedule(sid), pair = sc.pairs[0];
-  $("rankWhere").innerHTML = `Sentence <b>${esc(sid)}</b> · ${esc(STATUS[sc.status] || sc.status)} · ${sc.done} voted here, ${sc.pairs.length} to go · ${done} of ${done + pend} overall`;
+  $("rankWhere").innerHTML = `Sentence <b>${esc(sid)}</b> · ${sc.bracket ? `<b>${esc(sc.bracket)}</b> bracket · ` : ""}${esc(STATUS[sc.status] || sc.status)} · ${sc.done} voted here, ${sc.pairs.length} to go · ${done} of ${done + pend} overall`;
   const s = sentBy(sid);
   $("rFocus").textContent = [s.id, s.focus].filter(Boolean).join(" · ");
   $("rText").textContent = field(s, "display") || s.text || "";
   $("rGloss").textContent = field(s, "gloss") || "";
   $("rankEmpty").hidden = !!pair; $("rankBody").hidden = !pair;
   if (!pair) { $("rankEmpty").textContent = `${STATUS[sc.status]}. Pick another sentence, or see Results.`; return; }
-  S.rank.pair = { sid, left: pair[0], right: pair[1], status: sc.status };
+  S.rank.pair = { sid, left: pair[0], right: pair[1], status: sc.status, bracket: sc.bracket || null };
   document.querySelectorAll("#outcomes button").forEach((b) => b.classList.toggle("on", b.dataset.o === S.rank.choice));
   document.querySelectorAll(".side").forEach((el) => {
     const side = el.dataset.side, ch = S.rank.choice;
@@ -643,7 +661,7 @@ function confirmPair() {
   if (!p) return;
   if (!o) { toast("Pick 1 A better, 2 B better, 3 tie or 4 both bad", 2000); return; }
   const note = $("rNote").value.trim();
-  const row = { id: uid(), sentence: p.sid, pair: pairId(p.sid, p.left, p.right), left: p.left, right: p.right, outcome: o, note, stage: p.status, client_id: LS("client"), annotator: C.annotator || null };
+  const row = { id: uid(), sentence: p.sid, pair: pairId(p.sid, p.left, p.right), left: p.left, right: p.right, outcome: o, note, stage: p.status, ...(p.bracket ? { bracket: p.bracket } : {}), client_id: LS("client"), annotator: C.annotator || null };
   queueRow("pairs", row); S.pairs.push(row);
   const late = [];
   if (o === "both_bad") for (const run of [p.left, p.right]) { // both go back as late fails, with the reason
@@ -692,7 +710,7 @@ function renderResults() {
   sortTable("byVoice", cols, rows, (c, v) => (c === "pass" ? (v == null ? "" : `${Math.round(v)}%<span class="sbar" style="width:${v / 2}px"></span>`) : null), ["n", "fails", "stress", "mis", ...cats.map((c) => "r:" + c)]);
   // pass 2
   const scope = $("btScope").value || "all";
-  const vs = votes().filter((v) => v.outcome !== "both_bad" && (scope === "all" || v.sentence === scope));
+  const vs = votes().filter((v) => v.outcome !== "both_bad" && (scope === "all" || v.sentence === scope) && bracketOf(v.left) === bracketOf(v.right));
   const fit = btFit(vs, runs().map((m) => m.slug));
   const rk = fit.order.map((slug, i) => {
     const mine = vs.filter((v) => v.left === slug || v.right === slug);
@@ -701,7 +719,7 @@ function renderResults() {
     return { rank: i + 1, name: nameOf(slug), n: mine.length, wtl: `${w} / ${t} / ${mine.length - w - t}`, rate: mine.length ? 100 * (w + t / 2) / mine.length : null, bt: fit.p[slug] };
   });
   $("btScope").innerHTML = `<option value="all">All sentences (${votes().filter((v) => v.outcome !== "both_bad").length} comparisons)</option>` +
-    S.data.sentences.map((s) => `<option value="${esc(s.id)}" ${scope === s.id ? "selected" : ""}>${esc(s.id)} · ${esc(STATUS[schedule(s.id).status] || "")}</option>`).join("");
+    S.data.sentences.map((s) => `<option value="${esc(s.id)}" ${scope === s.id ? "selected" : ""}>${esc(s.id)} · ${esc(schedule(s.id).label || STATUS[schedule(s.id).status] || "")}</option>`).join("");
   $("byRank").innerHTML = `<thead><tr><th>#</th><th>Voice</th><th>Comparisons</th><th>W / T / L</th><th>Win rate</th><th>BT strength</th></tr></thead><tbody>` +
     (rk.map((r) => `<tr><td class="n">${r.rank}</td><td>${esc(r.name)}</td><td class="n">${r.n}</td><td class="n">${r.wtl}</td><td class="n">${r.rate == null ? "" : Math.round(r.rate) + "%"}</td>
       <td class="n">${r.bt.toFixed(2)}<span class="sbar" style="width:${Math.min(120, 30 * r.bt)}px"></span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No comparisons yet.</td></tr>`) + "</tbody>";
@@ -710,9 +728,10 @@ function renderResults() {
     S.data.sentences.map((s) => {
       const ns = rowsScreened().filter((n) => n.sentence === s.id), sc = schedule(s.id);
       const wc = {}; ns.filter((n) => n.verdict === "fail").flatMap((n) => n.word_issues || []).forEach((t) => [].concat(t.word || t.words || []).forEach((w) => (wc[w] = (wc[w] || 0) + 1)));
-      const win = ["decided", "tie", "cycle", "single", "done"].includes(sc.status) && sc.leader ? nameOf(sc.leader) + ({ tie: " (BT)", cycle: " (BT)", single: " (only pass)" }[sc.status] || "") : "";
+      const winOf = (x) => ["decided", "tie", "cycle", "single", "done"].includes(x.status) && x.leader ? nameOf(x.leader) + ({ tie: " (BT)", cycle: " (BT)", single: " (only pass)" }[x.status] || "") : "";
+      const win = sc.brackets ? sc.brackets.map((x) => winOf(x) && `${x.bracket}: ${winOf(x)}`).filter(Boolean).join(" · ") : winOf(sc);
       return `<tr><td>${esc(s.id)}</td><td>${esc(field(s, "gloss") || field(s, "display") || "")}</td><td class="n">${ns.length}</td><td class="n">${ns.filter((n) => n.verdict === "pass").length}</td>
-        <td>${esc(STATUS[sc.status] || sc.status)} · ${sc.done} votes</td><td>${esc(win)}</td><td ${C.rtl ? 'dir="rtl"' : ""}>${esc(Object.entries(wc).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([w, c]) => `${w} ×${c}`).join(", "))}</td></tr>`;
+        <td>${esc(sc.label || STATUS[sc.status] || sc.status)} · ${sc.done} votes</td><td>${esc(win)}</td><td ${C.rtl ? 'dir="rtl"' : ""}>${esc(Object.entries(wc).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([w, c]) => `${w} ×${c}`).join(", "))}</td></tr>`;
     }).join("") + "</tbody>";
   // optional quality
   $("qualityWrap").hidden = !qualityOn();
