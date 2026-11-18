@@ -240,7 +240,7 @@ def path_for(eval_id, kind, max_age=60):
 # Files written only by tools/apply_voice_notes.py, never by this server, merged in on read. Keeping writers apart is
 # what stops the two from overwriting each other's lines (found 2026-11-18: a read-modify-write by the tool dropped a
 # note the Space had just saved).
-DERIVED = {"screen": "screen-voice", "voice": "voice-applied"}
+DERIVED = {"screen": "screen-voice", "voice": "voice-applied", "pairs": "pairs-voice"}
 
 
 def rows(eval_id, kind):

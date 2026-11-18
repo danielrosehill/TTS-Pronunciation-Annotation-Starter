@@ -42,7 +42,9 @@ Listen to the annotator's recording. Return JSON only:
                    "word": "<the word as written>", "heard": <stressed syllable index heard, 0-based, stress only>,
                    "correct": <syllable index it should be, 0-based, stress only>, "ipa_heard": "<IPA, mispronunciation only>",
                    "ipa_expected": "<IPA>", "comment": "<their words, short>"}}],
-  "preference": "left" | "right" | "tie" | "both_bad" | null,   // only for a comparison of two voices
+  "preference": "left" | "right" | "tie" | "both_bad" | null,   // only for a comparison of two voices (left = A, right = B)
+  "preferred_reasons": [<short tags for why the preferred side is better, e.g. "pacing", "intonation", "naturalness", "clarity", "pronunciation", "stress", "voice quality", "audio quality", "accent">],
+  "other_reasons": [<short tags for what is wrong with the other side>],
   "note": "<anything else they said that is worth keeping, short, or empty>",
   "confidence": "high" | "medium" | "low"}}
 Only record what the annotator said or clearly implied. Use the reference syllables and IPA to locate words and syllables;
@@ -76,7 +78,8 @@ def context(man, note):
         lines.append(f"  word {w['position']}: {w['nikud']}  reference IPA /{w['ipa_ref']}/  syllables {w['syllables']}  reference stress index {w['stress_ref']}")
     runs = {m["slug"]: m["name"] for m in man["models"]}
     if note.get("pass") == "rank":
-        lines.append(f"This note compares two voices: left = {runs.get(note.get('left'))}, right = {runs.get(note.get('right'))}.")
+        lines.append(f"This note compares two voices played as A and B: A (left) = {runs.get(note.get('left'))}, B (right) = "
+                     f"{runs.get(note.get('right'))}. The annotator heard them blind and calls them A and B.")
     else:
         lines.append(f"Voice: {runs.get(note.get('run'), note.get('run'))}")
     return "\n".join(lines)
@@ -211,7 +214,9 @@ def main():
         man = manifest_for(cfg, ev)
         derived = read_lines(repo, f"annotations/{ev}/screen-voice.jsonl")  # written here only
         screen = read_lines(repo, f"annotations/{ev}/screen.jsonl") + derived
-        new_voice, new_screen = [], []
+        new_voice, new_screen, new_pairs = [], [], []
+        pairs_own = read_lines(repo, f"annotations/{ev}/pairs-voice.jsonl")  # written here only
+        pairs_all = read_lines(repo, f"annotations/{ev}/pairs.jsonl") + pairs_own
         for v in todo:
             src = dl(repo, v["audio"], repo_type="dataset")
             with tempfile.NamedTemporaryFile(suffix=".mp3") as t:
@@ -224,6 +229,21 @@ def main():
             p = {"type": "processed", "target": v["id"], "model": a.model, "transcript": out.get("transcript"),
                  "transcript_clean": out.get("transcript_clean"), "clean_v": CLEAN_V, "applied": out,
                  "usage": usage, "processed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            if v.get("pass") == "rank" and out.get("preference"):
+                pid = "|".join([v["sentence"], *sorted([v["left"], v["right"]])])
+                hand = [q for q in pairs_all if q.get("pair") == pid and q.get("outcome") and q.get("type") != "explanation"
+                        and not str(q.get("source", "")).startswith("voice") and q.get("saved", "") >= v["saved"][:16]]
+                expl = {"id": "x-" + v["id"], "type": "explanation", "sentence": v["sentence"], "pair": pid, "left": v["left"], "right": v["right"],
+                        "preference": out["preference"], "preferred_reasons": out.get("preferred_reasons") or [],
+                        "other_reasons": out.get("other_reasons") or [], "note": out.get("note") or "", "source": f"voice:{v['id']}",
+                        "annotator": v.get("annotator"), "eval_id": ev, "saved": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+                if hand:  # a clicked vote exists: the note explains it, it doesn't vote again
+                    expl["target"] = hand[-1]["id"]
+                    if hand[-1]["outcome"] != out["preference"]:
+                        p["conflict"] = f"the clicked vote ({hand[-1]['outcome']}) differs from the note ({out['preference']})"
+                    new_pairs.append(expl)
+                else:  # no clicked vote: the spoken preference is the vote
+                    new_pairs.append(dict(expl, id="v-" + v["id"], type=None, outcome=out["preference"], stage="voice"))
             if v.get("pass") != "rank" and out.get("verdict") in ("pass", "fail"):
                 manual = [r for r in screen if r["run"] == v["run"] and r["sentence"] == v["sentence"]
                           and not str(r.get("source", "")).startswith("voice") and r.get("saved", "") > v["saved"]]
@@ -253,11 +273,12 @@ def main():
                               "word_issues": len(out.get("word_issues") or []), "conflict": p.get("conflict")}, ensure_ascii=False))
         if a.apply:
             with tempfile.TemporaryDirectory() as d:
-                for name, rows in (("voice-applied.jsonl", applied + new_voice), ("screen-voice.jsonl", derived + new_screen)):
+                for name, rows in (("voice-applied.jsonl", applied + new_voice), ("screen-voice.jsonl", derived + new_screen),
+                                   ("pairs-voice.jsonl", pairs_own + [{k: v for k, v in r.items() if v is not None} for r in new_pairs])):
                     Path(d, name).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf8")
                     api.upload_file(path_or_fileobj=str(Path(d, name)), path_in_repo=f"annotations/{ev}/{name}", repo_id=repo,
                                     repo_type="dataset", commit_message=f"{ev}: apply {len(new_voice)} voice notes")
-            print(ev, f"applied: {len(new_voice)} notes processed, {len(new_screen)} screen rows written")
+            print(ev, f"applied: {len(new_voice)} notes processed, {len(new_screen)} screen rows, {len(new_pairs)} pair rows written")
         else:
             print(ev, f"dry run: {len(new_voice)} notes, {len(new_screen)} screen rows would be written (add --apply)")
 

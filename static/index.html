@@ -123,15 +123,19 @@
         <div class="english" id="rGloss"></div>
       </div>
       <div class="duel">
-        <div class="side" data-side="left"><div class="sname" id="nameL">A</div><button class="play" id="playL" aria-label="Play A">▶</button><kbd>A</kbd></div>
+        <div class="side" data-side="left"><div class="sname" id="nameL">A</div><button class="play" id="playL" aria-label="Play or pause A">▶</button><kbd>A</kbd></div>
         <div class="vs">vs</div>
-        <div class="side" data-side="right"><div class="sname" id="nameR">B</div><button class="play" id="playR" aria-label="Play B">▶</button><kbd>B</kbd></div>
+        <div class="side" data-side="right"><div class="sname" id="nameR">B</div><button class="play" id="playR" aria-label="Play or pause B">▶</button><kbd>B</kbd></div>
       </div>
       <div class="seg outcomes" id="outcomes">
         <button data-o="left">A better <kbd>1</kbd></button>
         <button data-o="right">B better <kbd>2</kbd></button>
         <button data-o="tie">Tie <kbd>3</kbd></button>
         <button data-o="both_bad" class="bad">Both bad <kbd>4</kbd></button>
+      </div>
+      <div class="voicenote rank-vn">
+        <button id="vnBtnR" class="vn" title="Say why you prefer one (R)">🎙 Voice note <kbd>R</kbd></button>
+        <div id="vnStateR" class="mini">Say which you prefer and why: pacing, intonation, naturalness, clarity, a word…</div>
       </div>
       <input id="rNote" class="cmt" placeholder="Note (optional): why, especially for 'both bad'">
       <div class="actions">

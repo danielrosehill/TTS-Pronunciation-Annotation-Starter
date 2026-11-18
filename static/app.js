@@ -472,11 +472,11 @@ function vnCtx() {
 }
 const vnKey = (x) => x && (x.pass === "rank" ? `rank|${x.sentence}|${x.left}|${x.right}` : key(x.run, x.sentence));
 function renderVn() {
-  const b = $("vnBtn"); if (!b) return;
+  const rank = S.tab === "rank", b = $(rank ? "vnBtnR" : "vnBtn"); if (!b) return;
   const ctx = vnCtx(), on = !!VN.rec;
   b.classList.toggle("rec", on);
   b.innerHTML = on ? "■ Stop and send <kbd>R</kbd>" : "🎙 Voice note <kbd>R</kbd>";
-  $("vnState").textContent = on ? "Recording… say what you heard: pass or fail, why, which word." :
+  $(rank ? "vnStateR" : "vnState").textContent = rank && !on && !VN.failed && !VN.done.has(vnKey(ctx)) ? "Say which you prefer and why: pacing, intonation, naturalness, clarity, a word…" : on ? "Recording… say what you heard: pass or fail, why, which word." :
     VN.failed ? "Upload failed: press R twice to record again, or check the connection." :
     VN.done.has(vnKey(ctx)) ? "Voice note saved ✓ (transcribed and applied later)" : "";
 }
@@ -521,7 +521,7 @@ const passing = (sid) => (C.rank_by === "survivors"
 const pairId = (sid, a, b) => [sid, ...[a, b].sort()].join("|");
 function votes() { // valid comparisons: not undone; latest per row id
   const undone = new Set(S.pairs.filter((p) => p.type === "undo").map((p) => p.target));
-  return S.pairs.filter((p) => p.type !== "undo" && !undone.has(p.id));
+  return S.pairs.filter((p) => p.type !== "undo" && p.type !== "explanation" && p.outcome && !undone.has(p.id));
 }
 function sentVotes(sid, items) {
   const set = new Set(items);
@@ -590,7 +590,7 @@ function nextRankSentence(from) {
 }
 function openRank(sid) {
   S.rank.sid = sid || nextRankSentence(S.rank.sid) || null;
-  S.rank.choice = null; $("rNote").value = "";
+  S.rank.choice = null; $("rNote").value = ""; S.rank.playing = null;
   ["playL", "playR"].forEach((id) => (S.rank[id] = null));
   $("audio").pause();
   renderRank();
@@ -599,6 +599,7 @@ const STATUS = { opening: "Opening round", playoff: "Play-off: the leader agains
   decided: "Decided", tie: "Tie between unbeaten finalists (Bradley–Terry decides)", cycle: "Cycle: every voice has a loss (Bradley–Terry decides)",
   voting: "All pairs", done: "All pairs voted", empty: "No clip passed the screen yet", single: "Only one clip passed: nothing to compare" };
 function renderRank() {
+  setTimeout(renderVn);
   const ss = rankSentences();
   const all = ss.map((sid) => schedule(sid));
   const pend = all.reduce((a, x) => a + x.pairs.length, 0), done = all.reduce((a, x) => a + x.done, 0);
@@ -631,8 +632,11 @@ function playSide(side) {
   const p = S.rank.pair; if (!p) return;
   const run = side === "left" ? p.left : p.right, m = runBy(run), a = $("audio");
   const src = S.data.clip_base + m.clips[p.sid];
-  if (S.rank.playing === side && !a.paused) { a.pause(); return; }
-  a.src = src; a.play().catch(() => {}); S.rank.playing = side;
+  if (S.rank.playing === side && a.dataset.src === src) { // same side: pause or resume where it stopped
+    if (a.paused) a.play().catch(() => {}); else a.pause();
+    return;
+  }
+  a.src = src; a.dataset.src = src; a.play().catch(() => {}); S.rank.playing = side;
 }
 function confirmPair() {
   const p = S.rank.pair, o = S.rank.choice;
@@ -828,6 +832,9 @@ function wire() {
   $("toBoard").addEventListener("click", () => tab("board"));
   $("boardCols").addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { if (b.dataset.go === "rate") start(); else tab(b.dataset.go); } });
   $("vnBtn").addEventListener("click", vnToggle);
+  $("vnBtnR").addEventListener("click", vnToggle);
+  const icons = () => { const a = $("audio"); ["L", "R"].forEach((x) => { const b = $("play" + x); if (b) b.textContent = !a.paused && S.rank.playing === (x === "L" ? "left" : "right") ? "❚❚" : "▶"; }); };
+  ["play", "pause", "ended"].forEach((ev) => $("audio").addEventListener(ev, icons));
   $("next").addEventListener("click", () => go(1, false));
   $("prev").addEventListener("click", () => go(-1, false));
   $("dots").addEventListener("click", (e) => { const b = e.target.closest(".dot"); if (b) go(Number(b.dataset.i) - S.pos, false); });
@@ -900,7 +907,7 @@ function onKey(e) {
     else if (map[e.key]) { S.rank.choice = map[e.key]; renderRank(); }
     else if (e.key === "Enter") { e.preventDefault(); confirmPair(); }
     else if (k === "u") undoPair();
-    else if (e.key === " ") { e.preventDefault(); $("audio").paused ? $("audio").play() : $("audio").pause(); }
+    else if (e.key === " ") { e.preventDefault(); if (S.rank.playing) playSide(S.rank.playing); }
   }
 }
 
