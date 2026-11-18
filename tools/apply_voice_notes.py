@@ -181,6 +181,10 @@ def main():
         notes = read_lines(repo, f"annotations/{ev}/voice.jsonl")          # written by the Space only: read, never written here
         applied = read_lines(repo, f"annotations/{ev}/voice-applied.jsonl")  # written here only
         voice = notes + applied
+        if a.recategorize:
+            recat(a, cfg, api, repo, ev, read_lines(repo, f"annotations/{ev}/screen.jsonl"),
+                  read_lines(repo, f"annotations/{ev}/screen-voice.jsonl"), notes, applied)
+            continue
         if a.clean_existing:
             cleaned = {v["target"] for v in voice if v.get("type") in ("cleaned", "processed") and v.get("transcript_clean") and v.get("clean_v", 1) >= CLEAN_V}
             extra = []
@@ -204,9 +208,6 @@ def main():
             print(ev, "nothing to process"); continue
         man = manifest_for(cfg, ev)
         derived = read_lines(repo, f"annotations/{ev}/screen-voice.jsonl")  # written here only
-        if a.recategorize:
-            recat(a, cfg, api, repo, ev, read_lines(repo, f"annotations/{ev}/screen.jsonl"), derived, notes, applied)
-            continue
         screen = read_lines(repo, f"annotations/{ev}/screen.jsonl") + derived
         new_voice, new_screen = [], []
         for v in todo:
