@@ -27,13 +27,15 @@ The clip read this sentence:
 {context}
 
 Fail-reason categories (use these exact strings): {reasons}
+Observations that do not fail a clip (use these exact strings): {observations}
 Voice gender options: {genders}
 
 Listen to the annotator's recording. Return JSON only:
 {{"transcript": "<verbatim transcript of the annotator, in the language(s) they spoke, Hebrew words in Hebrew script>",
   "transcript_clean": "<the same words, readable: punctuation and sentence breaks added, only 'um', 'uh' and stutters removed; keep everything else they said, including asides and offhand remarks, in their own wording; add nothing>",
   "verdict": "pass" | "fail" | null,            // null if they did not say or imply one
-  "fail_reasons": [<categories that apply>],    // empty unless verdict is fail
+  "fail_reasons": [<categories that apply>],    // empty unless verdict is fail; prefer a specific category to "Other"
+  "observations": [<observations that apply, on a pass or a fail>],
   "gender": <one gender option or null>,
   "word_issues": [{{"type": "stress" | "mispronunciation" | "other", "position": <1-based word position in the sentence>,
                    "word": "<the word as written>", "heard": <stressed syllable index heard, 0-based, stress only>,
@@ -92,6 +94,59 @@ def ask(model, prompt, mp3):
 
 # Light touch (Daniel, 2026-11-18: "you can keep my little weird offhand remarks as well, it's all part of the process").
 CLEAN_V = 2
+RECAT = """An annotator failed this text-to-speech clip and filed it under "{other}". Using only their own words below,
+choose the specific fail-reason categories that apply (exact strings, from: {reasons}) and any observations that apply
+(exact strings, from: {observations}). Keep "{other}" only if nothing else fits. Return JSON only:
+{{"fail_reasons": [...], "observations": [...]}}
+
+Their words:
+{words}"""
+
+
+def recat(a, cfg, api, repo, ev, screen, derived, notes, applied):
+    """Rename reasons and re-file 'Other' fails; appends rows to screen-voice.jsonl (this tool's file), never edits screen.jsonl."""
+    ren, other = cfg.get("renamed_reasons", {}), cfg.get("other_reason", "Other")
+    latest = {}
+    for r in sorted(screen + derived, key=lambda r: r.get("saved", "")):
+        latest[(r["run"], r["sentence"])] = r
+    clean = {}
+    for v in applied:
+        if v.get("transcript_clean") or v.get("transcript"):
+            clean[v["target"]] = v.get("transcript_clean") or v.get("transcript")
+    said = {}
+    for n in notes:
+        if not n.get("type") and n["id"] in clean:
+            said.setdefault((n.get("run"), n.get("sentence")), []).append(clean[n["id"]])
+    new = []
+    for k, r in latest.items():
+        if r.get("verdict") != "fail":
+            continue
+        reasons = [ren.get(x, x) for x in r.get("fail_reasons") or []]
+        obs = list(r.get("observations") or [])
+        if reasons == [other]:
+            words = "\n".join(filter(None, [r.get("note")] + said.get(k, [])))
+            if words:
+                body = {"model": a.model, "temperature": 0, "response_format": {"type": "json_object"}, "messages": [{"role": "user", "content":
+                        RECAT.format(other=other, reasons=json.dumps(cfg["fail_reasons"], ensure_ascii=False),
+                                     observations=json.dumps(cfg.get("observations", []), ensure_ascii=False), words=words)}]}
+                req = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=json.dumps(body).encode(),
+                                             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}", "Content-Type": "application/json"})
+                out = json.loads(json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"].strip().removeprefix("```json").removesuffix("```"))
+                reasons = [x for x in out.get("fail_reasons", []) if x in cfg["fail_reasons"]] or [other]
+                obs = sorted(set(obs) | {x for x in out.get("observations", []) if x in cfg.get("observations", [])})
+        if reasons != (r.get("fail_reasons") or []) or obs != (r.get("observations") or []):
+            row = dict(r, fail_reasons=reasons, observations=obs, source=f"recategorized:{r.get('source') or 'screen'}",
+                       saved=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+            new.append(row)
+            print(r["run"], r["sentence"], r.get("fail_reasons"), "->", reasons, obs)
+    if new and a.apply:
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "s.jsonl").write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in derived + new), encoding="utf8")
+            api.upload_file(path_or_fileobj=str(Path(d, "s.jsonl")), path_in_repo=f"annotations/{ev}/screen-voice.jsonl", repo_id=repo,
+                            repo_type="dataset", commit_message=f"{ev}: re-file {len(new)} fails under the revised reasons")
+    print(ev, f"{len(new)} rows re-filed" + ("" if a.apply else " (dry run)"))
+
+
 CLEAN = ("Make this transcript of an annotator's spoken note readable with a light touch: add punctuation and sentence "
          "breaks, and remove only 'um', 'uh' and stutters. Keep everything else they said, including asides and offhand "
          "remarks, in their own wording; keep Hebrew in Hebrew script; add nothing. Reply with the text only.\n\n")
@@ -111,6 +166,9 @@ def main():
     ap.add_argument("--model", default="google/gemini-3.5-flash")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--verbose", action="store_true", help="print the full structured reading of each note")
+    ap.add_argument("--recategorize", action="store_true",
+                    help="after a taxonomy change: rename reasons per config `renamed_reasons`, and re-file fails whose only reason is "
+                         "the `other_reason` into specific categories (and observations) from the annotator's own note and voice-note text")
     ap.add_argument("--clean-existing", action="store_true",
                     help="give notes processed before transcript_clean existed a cleaned transcript (text only; appends `cleaned` lines)")
     a = ap.parse_args()
@@ -146,6 +204,9 @@ def main():
             print(ev, "nothing to process"); continue
         man = manifest_for(cfg, ev)
         derived = read_lines(repo, f"annotations/{ev}/screen-voice.jsonl")  # written here only
+        if a.recategorize:
+            recat(a, cfg, api, repo, ev, read_lines(repo, f"annotations/{ev}/screen.jsonl"), derived, notes, applied)
+            continue
         screen = read_lines(repo, f"annotations/{ev}/screen.jsonl") + derived
         new_voice, new_screen = [], []
         for v in todo:
@@ -153,7 +214,8 @@ def main():
             with tempfile.NamedTemporaryFile(suffix=".mp3") as t:
                 subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", src, "-ac", "1", "-ar", "16000", "-b:a", "48k", t.name], check=True)
                 mp3 = Path(t.name).read_bytes()
-            prompt = PROMPT.format(context=context(man, v), reasons=json.dumps(cfg.get("fail_reasons", [])),
+            prompt = PROMPT.format(context=context(man, v), reasons=json.dumps(cfg.get("fail_reasons", []), ensure_ascii=False),
+                                   observations=json.dumps(cfg.get("observations", []), ensure_ascii=False),
                                    genders=json.dumps(list((cfg.get("gender") or {}).get("options", {}))))
             out, usage = ask(a.model, prompt, mp3)
             p = {"type": "processed", "target": v["id"], "model": a.model, "transcript": out.get("transcript"),
@@ -166,7 +228,7 @@ def main():
                     p["conflict"] = f"the verdict saved by hand ({manual[-1]['verdict']}) differs from the note's; not overwritten"
                 elif manual:  # same verdict: keep the hand-saved row, fill what it lacks from the note
                     m = dict(manual[-1])
-                    for k in ("fail_reasons", "word_issues"):
+                    for k in ("fail_reasons", "word_issues", "observations"):
                         m[k] = m.get(k) or out.get(k) or []
                     m["gender"] = m.get("gender") or out.get("gender")
                     m["note"] = "; ".join(x for x in (m.get("note"), out.get("note")) if x)
@@ -176,7 +238,7 @@ def main():
                 elif out["verdict"] == "pass" or out.get("fail_reasons"):
                     run = next((m for m in man["models"] if m["slug"] == v["run"]), {})
                     new_screen.append({"run": v["run"], "run_name": run.get("name"), "input": (run.get("run") or {}).get("input"),
-                                       "sentence": v["sentence"], "verdict": out["verdict"], "fail_reasons": out.get("fail_reasons") or [],
+                                       "sentence": v["sentence"], "verdict": out["verdict"], "fail_reasons": out.get("fail_reasons") or [], "observations": out.get("observations") or [],
                                        "word_issues": out.get("word_issues") or [], "gender": out.get("gender"), "scores": None,
                                        "note": out.get("note") or "", "blind": v.get("blind"), "source": f"voice:{v['id']}", "annotator": v.get("annotator"),
                                        "eval_id": ev, "saved": p["processed"], "schema": "tts-annotation/2"})

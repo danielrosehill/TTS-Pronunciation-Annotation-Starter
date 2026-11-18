@@ -112,7 +112,7 @@ function card(x) {
       <div><span class="verdict ${v}">${v === "none" ? "not screened" : v.toUpperCase()}</span></div></div>
     <div class="he">${esc(s.text_nikud || s.text)}</div><div class="gloss">${esc(x.sentence)} · ${esc(s.english)}</div>${metricLine(m, x.sentence) ? `<div class="meta">Measured: ${esc(metricLine(m, x.sentence))}</div>` : ""}
     ${clip ? `<div class="row"><div class="lbl">Clip</div><audio controls preload="none" src="${clip}"></audio></div>` : ""}
-    ${(a.fail_reasons || []).length || a.gender ? `<div class="row"><div class="lbl">Annotation</div><div>${(a.fail_reasons || []).map((r) => `<span class="chip">${esc(r)}</span>`).join("")}${a.gender ? `<span class="chip">voice: ${esc(a.gender)}</span>` : ""}</div></div>` : ""}
+    ${(a.fail_reasons || []).length || (a.observations || []).length || a.gender ? `<div class="row"><div class="lbl">Annotation</div><div>${(a.fail_reasons || []).map((r) => `<span class="chip">${esc(r)}</span>`).join("")}${(a.observations || []).map((r) => `<span class="chip" style="border-style:dashed">${esc(r)}</span>`).join("")}${a.gender ? `<span class="chip">voice: ${esc(a.gender)}</span>` : ""}</div></div>` : ""}
     ${a.note ? `<div class="row"><div class="lbl">Note</div><div class="note">${esc(a.note)}</div></div>` : ""}
     ${words ? `<table class="words"><tr><th>Word</th><th>Type</th><th>Detail</th><th>Comment</th></tr>${words}</table>` : ""}
     ${notes}

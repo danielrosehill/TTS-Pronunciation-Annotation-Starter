@@ -180,7 +180,7 @@ const refShown = (w) => w.ipa_ref || w.syllables.length;
 function sylDisplay(syls, stress) { return syls.map((x, i) => (i === stress ? "ˈ" + x : x)).join("."); }
 
 // ---------- screen view ----------
-function blankDraft() { return { verdict: null, fail_reasons: [], word_issues: [], gender: null, scores: {}, note: "" }; }
+function blankDraft() { return { verdict: null, fail_reasons: [], observations: [], word_issues: [], gender: null, scores: {}, note: "" }; }
 function lastGender(run) {
   let best = null;
   for (const r of S.screen.values()) if (r.run === run && r.gender && (!best || (r.saved || "") > (best.saved || ""))) best = r;
@@ -190,7 +190,7 @@ function openClip(pos, play = true) {
   S.pos = Math.max(0, Math.min(S.queue.length - 1, pos));
   const c = cur(), n = S.screen.get(key(c.run, c.sid));
   S.draft = n ? { verdict: n.verdict || null, fail_reasons: [...(n.fail_reasons || [])], word_issues: JSON.parse(JSON.stringify(n.word_issues || [])),
-    gender: n.gender || null, scores: { ...(n.scores || {}) }, note: n.note || "" } : blankDraft();
+    gender: n.gender || null, scores: { ...(n.scores || {}) }, note: n.note || "", observations: [...(n.observations || [])] } : blankDraft();
   S.prefilled = false;
   if (!n && !isBlind() && C.gender) { const g = lastGender(c.run); if (g) { S.draft.gender = g; S.prefilled = true; } }
   S.dirty = false; S.axis = 0; S.sel = []; closePop();
@@ -240,7 +240,10 @@ function renderVerdict() {
   document.querySelectorAll("#pf button").forEach((b) => b.classList.toggle("on", d.verdict === b.dataset.v));
   $("failBox").hidden = d.verdict !== "fail";
   $("failBox").classList.toggle("ok", !!d.fail_reasons.length);
-  $("reasons").innerHTML = (C.fail_reasons || []).map((r, i) => `<button class="chip ${d.fail_reasons.includes(r) ? "on" : ""}" data-r="${esc(r)}"><kbd>${i + 1}</kbd> ${esc(r)}</button>`).join("");
+  $("reasons").innerHTML = (C.fail_reasons || []).map((r, i) => `<button class="chip ${d.fail_reasons.includes(r) ? "on" : ""}" data-r="${esc(r)}">${i < 9 ? `<kbd>${i + 1}</kbd> ` : ""}${esc(r)}</button>`).join("");
+  // Observations (Daniel, 2026-11-18): things worth recording that don't fail a clip (a bit fast, gender register...).
+  $("obsBox").hidden = !(C.observations || []).length;
+  $("obs").innerHTML = (C.observations || []).map((r) => `<button class="chip ${d.observations.includes(r) ? "on" : ""}" data-o="${esc(r)}">${esc(r)}</button>`).join("");
   const g = genderOpts();
   $("gender").parentElement.querySelectorAll("#gender, .axis-label.gl").forEach((e) => (e.hidden = !g.length));
   $("genderKeys").innerHTML = g.map((o) => `<kbd>${esc(o.k.toUpperCase())}</kbd>`).join(" ") + (S.prefilled ? ` <span class="muted">(prefilled from this voice's last clip)</span>` : "");
@@ -412,14 +415,14 @@ function screenValid(d) {
   if (d.verdict === "fail" && !d.fail_reasons.length) return "Why did it fail? Tap a category (1–" + (C.fail_reasons || []).length + ")";
   return null;
 }
-const hasContent = (d) => d.verdict || d.fail_reasons.length || d.word_issues.length || d.gender || Object.keys(d.scores).length || d.note.trim();
+const hasContent = (d) => d.verdict || d.fail_reasons.length || d.observations.length || d.word_issues.length || d.gender || Object.keys(d.scores).length || d.note.trim();
 function saveScreen() {
   const c = cur(), m = runBy(c.run), d = S.draft;
   d.note = $("note").value;
   const err = screenValid(d);
   if (err) { toast(err, 2200); return false; }
   const row = { run: c.run, run_name: m.name, input: m.run?.input || null, sentence: c.sid,
-    verdict: c.sid === "overall" ? "pass" : d.verdict, fail_reasons: d.fail_reasons, word_issues: d.word_issues, gender: d.gender,
+    verdict: c.sid === "overall" ? "pass" : d.verdict, fail_reasons: d.fail_reasons, observations: d.observations, word_issues: d.word_issues, gender: d.gender,
     scores: qualityOn() ? d.scores : null, note: d.note.trim(), blind: isBlind(), source: "screen", client_id: LS("client"), annotator: C.annotator || null };
   queueRow("screen", row);
   applyScreenRow(Object.assign({ saved: "just now" }, row));
@@ -743,6 +746,8 @@ function wire() {
   $("play").addEventListener("click", () => { const a = $("audio"); a.paused ? a.play() : a.pause(); });
   ["play", "pause", "ended"].forEach((e) => $("audio").addEventListener(e, setPlayIcon));
   $("pf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setResult(S.draft.verdict === b.dataset.v ? null : b.dataset.v); });
+  $("obs").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; const o = b.dataset.o, d = S.draft;
+    d.observations = d.observations.includes(o) ? d.observations.filter((x) => x !== o) : [...d.observations, o]; touch(); renderVerdict(); });
   $("reasons").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; const r = b.dataset.r, d = S.draft;
     d.fail_reasons = d.fail_reasons.includes(r) ? d.fail_reasons.filter((x) => x !== r) : [...d.fail_reasons, r]; touch(); renderVerdict(); });
   $("gender").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S.draft.gender = S.draft.gender === b.dataset.v ? null : b.dataset.v; S.prefilled = false; touch(); renderVerdict(); });
