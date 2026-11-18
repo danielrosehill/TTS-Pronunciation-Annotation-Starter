@@ -559,15 +559,16 @@ function scheduleIn(sid, items) {
     for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) if (!met.has(pairId(sid, items[i], items[j]))) res.pairs.push(sides(sid, items[i], items[j]));
     res.status = res.pairs.length ? "voting" : "done"; res.total = res.done + res.pairs.length; return res;
   }
-  // opening round
-  const order = shuffled(items, S.evalId + sid + "open"), opening = [];
-  for (let i = 0; i < order.length; i += 2) opening.push([order[i], order[(i + 1) % order.length]]);
-  const pendingOpen = opening.filter(([a, b]) => a !== b && !met.has(pairId(sid, a, b)));
-  if (pendingOpen.length) { res.status = "opening"; res.pairs = pendingOpen.map(([a, b]) => sides(sid, a, b)); res.total = res.done + res.pairs.length; return res; }
   const wins = {}, losses = {}; items.forEach((x) => { wins[x] = 0; losses[x] = 0; });
   vs.forEach((v) => { if (v.outcome === "left") { wins[v.left]++; losses[v.right]++; } else if (v.outcome === "right") { wins[v.right]++; losses[v.left]++; } });
   const unbeaten = items.filter((x) => !losses[x]);
   res.unbeaten = unbeaten;
+  // opening round. A voice with a loss is out at once, even mid-opening (Daniel, 2026-11-18: tighten the Arena), so no
+  // opening pair involving it is served; its would-be opponent meets the leader in the play-off instead.
+  const order = shuffled(items, S.evalId + sid + "open"), opening = [];
+  for (let i = 0; i < order.length; i += 2) opening.push([order[i], order[(i + 1) % order.length]]);
+  const pendingOpen = opening.filter(([a, b]) => a !== b && !losses[a] && !losses[b] && !met.has(pairId(sid, a, b)));
+  if (pendingOpen.length) { res.status = "opening"; res.pairs = pendingOpen.map(([a, b]) => sides(sid, a, b)); res.total = res.done + res.pairs.length; return res; }
   if (!unbeaten.length) { res.status = "cycle"; res.leader = btFit(vs, items).order[0]; res.total = res.done; return res; }
   const bt = btFit(vs, items).p;
   const leader = unbeaten.slice().sort((a, b) => wins[b] - wins[a] || (bt[b] || 0) - (bt[a] || 0))[0];
