@@ -209,7 +209,7 @@ KINDS = {"screen": "tts-annotation/2", "pairs": "tts-pairwise/1", "voice": "tts-
 # "transcript": ..., "applied": {...}} lines and writes the derived screen rows (source "voice:<id>").
 VOICE_ROW = ["id", "pass", "run", "run_name", "sentence", "left", "right", "blind", "mime", "seconds", "client_id", "annotator"]
 SCREEN_ROW = ["run", "run_name", "input", "sentence", "verdict", "fail_reasons", "observations", "word_issues", "gender", "scores", "note", "blind", "source", "client_id", "annotator"]
-PAIR_ROW = ["id", "type", "target", "sentence", "pair", "left", "right", "outcome", "stage", "note", "client_id", "annotator"]
+PAIR_ROW = ["id", "type", "target", "sentence", "pair", "left", "right", "outcome", "stage", "bracket", "note", "client_id", "annotator"]
 
 
 def kind_ok(kind):
