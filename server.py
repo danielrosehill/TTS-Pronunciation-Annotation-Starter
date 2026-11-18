@@ -237,11 +237,19 @@ def path_for(eval_id, kind, max_age=60):
     return p
 
 
+# Files written only by tools/apply_voice_notes.py, never by this server, merged in on read. Keeping writers apart is
+# what stops the two from overwriting each other's lines (found 2026-11-18: a read-modify-write by the tool dropped a
+# note the Space had just saved).
+DERIVED = {"screen": "screen-voice", "voice": "voice-applied"}
+
+
 def rows(eval_id, kind):
-    out = [json.loads(l) for l in path_for(eval_id, kind).read_text(encoding="utf8").splitlines() if l.strip()]
+    def load(k):
+        return [json.loads(l) for l in path_for(eval_id, k).read_text(encoding="utf8").splitlines() if l.strip()]
+    out = load(kind) + (load(DERIVED[kind]) if kind in DERIVED and not LOCAL_ONLY else [])
     if kind == "screen":
         latest = {}
-        for n in out:
+        for n in sorted(out, key=lambda n: n.get("saved") or ""):
             latest[(n["run"], n["sentence"])] = n
         return list(latest.values())
     return out

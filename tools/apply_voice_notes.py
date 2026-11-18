@@ -7,8 +7,9 @@ annotations/<eval_id>/voice.jsonl (the clip or pair it was about). For every not
   1. converts the audio to 16 kHz mono MP3 (ffmpeg) and sends it, with the clip's context (sentence, pointed text,
      gloss, per-word reference IPA and syllables, the config's fail-reason categories and gender options), to an
      audio-capable model on OpenRouter (default google/gemini-3.5-flash);
-  2. keeps the model's verbatim transcript and its structured reading of it, as a `processed` line in voice.jsonl;
-  3. for a screen note that states a verdict, appends a screen row with source "voice:<id>", unless the annotator
+  2. keeps the model's verbatim transcript, a lightly cleaned one and its structured reading, as a `processed` line in
+     voice-applied.jsonl (this tool's own file: voice.jsonl and screen.jsonl belong to the app and are only read here);
+  3. for a screen note that states a verdict, appends a screen row with source "voice:<id>" to screen-voice.jsonl, unless the annotator
      already saved a verdict for that clip by hand after the note was recorded (then it only records a conflict);
      a rank note's stated preference is kept in the processed line for review, not turned into a vote.
 
@@ -30,6 +31,7 @@ Voice gender options: {genders}
 
 Listen to the annotator's recording. Return JSON only:
 {{"transcript": "<verbatim transcript of the annotator, in the language(s) they spoke, Hebrew words in Hebrew script>",
+  "transcript_clean": "<the same words lightly cleaned for reading: punctuation and sentence breaks added, fillers (um, uh, so, like) and false starts removed, repeated phrases said once; keep the annotator's own wording, first person and meaning, add nothing>",
   "verdict": "pass" | "fail" | null,            // null if they did not say or imply one
   "fail_reasons": [<categories that apply>],    // empty unless verdict is fail
   "gender": <one gender option or null>,
@@ -88,6 +90,18 @@ def ask(model, prompt, mp3):
     return json.loads(txt), r.get("usage", {})
 
 
+CLEAN = ("Lightly clean this transcript of an annotator's spoken note for reading: add punctuation and sentence breaks, "
+         "remove fillers (um, uh, so, like) and false starts, say repeated phrases once. Keep their own wording, first "
+         "person and meaning; keep Hebrew in Hebrew script; add nothing. Reply with the cleaned text only.\n\n")
+
+
+def clean_text(model, text):
+    body = {"model": model, "temperature": 0, "messages": [{"role": "user", "content": CLEAN + text}]}
+    req = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=json.dumps(body).encode(),
+                                 headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}", "Content-Type": "application/json"})
+    return json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"].strip()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -95,6 +109,8 @@ def main():
     ap.add_argument("--model", default="google/gemini-3.5-flash")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--verbose", action="store_true", help="print the full structured reading of each note")
+    ap.add_argument("--clean-existing", action="store_true",
+                    help="give notes processed before transcript_clean existed a cleaned transcript (text only; appends `cleaned` lines)")
     a = ap.parse_args()
     cfg = json.load(open(a.config))
     repo = cfg["notes_repo"]
@@ -102,13 +118,33 @@ def main():
     files = api.list_repo_files(repo, repo_type="dataset")
     evals = [a.eval] if a.eval else sorted({f.split("/")[1] for f in files if f.endswith("/voice.jsonl")})
     for ev in evals:
-        voice = read_lines(repo, f"annotations/{ev}/voice.jsonl")
+        notes = read_lines(repo, f"annotations/{ev}/voice.jsonl")          # written by the Space only: read, never written here
+        applied = read_lines(repo, f"annotations/{ev}/voice-applied.jsonl")  # written here only
+        voice = notes + applied
+        if a.clean_existing:
+            cleaned = {v["target"] for v in voice if v.get("type") == "cleaned" or (v.get("type") == "processed" and v.get("transcript_clean"))}
+            extra = []
+            for v in voice:
+                if v.get("type") == "processed" and v["target"] not in cleaned and v.get("transcript"):
+                    t = clean_text(a.model, v["transcript"])
+                    extra.append({"type": "cleaned", "target": v["target"], "model": a.model, "transcript_clean": t,
+                                  "processed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                    print(v["target"], "->", t[:200])
+            if extra and a.apply:
+                applied += extra
+                with tempfile.TemporaryDirectory() as d:
+                    Path(d, "voice-applied.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in applied), encoding="utf8")
+                    api.upload_file(path_or_fileobj=str(Path(d, "voice-applied.jsonl")), path_in_repo=f"annotations/{ev}/voice-applied.jsonl",
+                                    repo_id=repo, repo_type="dataset", commit_message=f"{ev}: cleaned transcripts for {len(extra)} notes")
+                voice = notes + applied
+            print(ev, f"{len(extra)} transcripts cleaned" + ("" if a.apply else " (dry run)"))
         done = {v["target"] for v in voice if v.get("type") == "processed"}
         todo = [v for v in voice if not v.get("type") and v["id"] not in done]
         if not todo:
             print(ev, "nothing to process"); continue
         man = manifest_for(cfg, ev)
-        screen = read_lines(repo, f"annotations/{ev}/screen.jsonl")
+        derived = read_lines(repo, f"annotations/{ev}/screen-voice.jsonl")  # written here only
+        screen = read_lines(repo, f"annotations/{ev}/screen.jsonl") + derived
         new_voice, new_screen = [], []
         for v in todo:
             src = dl(repo, v["audio"], repo_type="dataset")
@@ -118,7 +154,8 @@ def main():
             prompt = PROMPT.format(context=context(man, v), reasons=json.dumps(cfg.get("fail_reasons", [])),
                                    genders=json.dumps(list((cfg.get("gender") or {}).get("options", {}))))
             out, usage = ask(a.model, prompt, mp3)
-            p = {"type": "processed", "target": v["id"], "model": a.model, "transcript": out.get("transcript"), "applied": out,
+            p = {"type": "processed", "target": v["id"], "model": a.model, "transcript": out.get("transcript"),
+                 "transcript_clean": out.get("transcript_clean"), "applied": out,
                  "usage": usage, "processed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             if v.get("pass") != "rank" and out.get("verdict") in ("pass", "fail"):
                 manual = [r for r in screen if r["run"] == v["run"] and r["sentence"] == v["sentence"]
@@ -149,7 +186,7 @@ def main():
                               "word_issues": len(out.get("word_issues") or []), "conflict": p.get("conflict")}, ensure_ascii=False))
         if a.apply:
             with tempfile.TemporaryDirectory() as d:
-                for name, rows in (("voice.jsonl", voice + new_voice), ("screen.jsonl", screen + new_screen)):
+                for name, rows in (("voice-applied.jsonl", applied + new_voice), ("screen-voice.jsonl", derived + new_screen)):
                     Path(d, name).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf8")
                     api.upload_file(path_or_fileobj=str(Path(d, name)), path_in_repo=f"annotations/{ev}/{name}", repo_id=repo,
                                     repo_type="dataset", commit_message=f"{ev}: apply {len(new_voice)} voice notes")
