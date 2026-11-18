@@ -112,7 +112,10 @@ async function loadEval() {
   $("roundPickWrap").hidden = !rounds.length;
   $("roundPick").innerHTML = rounds.map((r) => `<option value="${r}">Round ${r}: ${esc(S.data.sentences.filter((s) => s.round === r).map((s) => s.id).join(", "))}</option>`).join("") +
     (rounds.length ? `<option value="all">Every item</option>` : "");
-  if (rounds.length) $("roundPick").value = String(LS("round") && (LS("round") === "all" || rounds.includes(Number(LS("round")))) ? LS("round") : rounds[rounds.length - 1]);
+  // Default: the earliest round that still has clips waiting for a verdict (not the Arena's round), else the latest.
+  const waiting = rounds.filter((r) => r !== C.rank_round && S.data.sentences.some((s) => s.round === r &&
+    runs().some((m) => m.clips[s.id] && !S.screen.has(key(m.slug, s.id)) && !failedRuns().has(m.slug))));
+  if (rounds.length) $("roundPick").value = String(waiting[0] ?? rounds[rounds.length - 1]);
   $("voicePick").innerHTML = runs().map((m) => `<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
   if (S.voice && runBy(S.voice)) $("voicePick").value = S.voice;
   S.rank.history = [];
@@ -131,7 +134,9 @@ const inRound = (s) => !S.round || S.round === "all" || s.round === Number(S.rou
 function buildQueue() {
   const q = [];
   if (S.mode === "compare") {
-    for (const s of S.data.sentences.filter(inRound)) {
+    // The Arena's item (config rank_round) is never screened: survivors meet on it head to head.
+    const arenaOnly = (s) => C.rank_by === "survivors" && C.rank_round != null && s.round === C.rank_round;
+    for (const s of S.data.sentences.filter((s) => inRound(s) && !arenaOnly(s))) {
       // Daniel, 2026-11-18: "I don't need to keep hearing the failure voices because we know that they fail."
       let rs = runs().filter((m) => m.clips[s.id] && (!S.skipFailed || !failedRuns().has(m.slug) || S.screen.has(key(m.slug, s.id)))
         && !(S.unscreenedOnly && S.screen.has(key(m.slug, s.id)))).map((m) => m.slug);
