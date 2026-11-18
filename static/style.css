@@ -215,9 +215,10 @@ body.rtl .syls { direction: ltr; }
 @keyframes vnpulse { 50% { opacity: .7; } }
 
 /* readability pass (2026-11-18) */
-.pf button { padding: 20px 0; font-size: 22px; }
+.pf, .seg.use, #gender { max-width: none !important; }
+.seg.pf button { padding: 20px 0; font-size: 22px; }
 .player .voicenote { margin: 0 0 0 auto; }
-.vn { font-size: 18px; padding: 14px 20px; border-radius: 40px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font-weight: 600; }
+.vn { white-space: nowrap; font-size: 18px; padding: 14px 20px; border-radius: 40px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font-weight: 600; }
 .vn.rec { border-color: #d92d20; }
 .prov { color: var(--dim); font-size: 14px; margin-top: 2px; }
 .annotator { color: var(--dim); font-size: 14px; margin-left: 12px; font-weight: 400; }
