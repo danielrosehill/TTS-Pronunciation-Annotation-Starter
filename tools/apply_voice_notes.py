@@ -31,7 +31,7 @@ Voice gender options: {genders}
 
 Listen to the annotator's recording. Return JSON only:
 {{"transcript": "<verbatim transcript of the annotator, in the language(s) they spoke, Hebrew words in Hebrew script>",
-  "transcript_clean": "<the same words lightly cleaned for reading: punctuation and sentence breaks added, fillers (um, uh, so, like) and false starts removed, repeated phrases said once; keep the annotator's own wording, first person and meaning, add nothing>",
+  "transcript_clean": "<the same words, readable: punctuation and sentence breaks added, only 'um', 'uh' and stutters removed; keep everything else they said, including asides and offhand remarks, in their own wording; add nothing>",
   "verdict": "pass" | "fail" | null,            // null if they did not say or imply one
   "fail_reasons": [<categories that apply>],    // empty unless verdict is fail
   "gender": <one gender option or null>,
@@ -90,9 +90,11 @@ def ask(model, prompt, mp3):
     return json.loads(txt), r.get("usage", {})
 
 
-CLEAN = ("Lightly clean this transcript of an annotator's spoken note for reading: add punctuation and sentence breaks, "
-         "remove fillers (um, uh, so, like) and false starts, say repeated phrases once. Keep their own wording, first "
-         "person and meaning; keep Hebrew in Hebrew script; add nothing. Reply with the cleaned text only.\n\n")
+# Light touch (Daniel, 2026-11-18: "you can keep my little weird offhand remarks as well, it's all part of the process").
+CLEAN_V = 2
+CLEAN = ("Make this transcript of an annotator's spoken note readable with a light touch: add punctuation and sentence "
+         "breaks, and remove only 'um', 'uh' and stutters. Keep everything else they said, including asides and offhand "
+         "remarks, in their own wording; keep Hebrew in Hebrew script; add nothing. Reply with the text only.\n\n")
 
 
 def clean_text(model, text):
@@ -122,12 +124,12 @@ def main():
         applied = read_lines(repo, f"annotations/{ev}/voice-applied.jsonl")  # written here only
         voice = notes + applied
         if a.clean_existing:
-            cleaned = {v["target"] for v in voice if v.get("type") == "cleaned" or (v.get("type") == "processed" and v.get("transcript_clean"))}
+            cleaned = {v["target"] for v in voice if v.get("type") in ("cleaned", "processed") and v.get("transcript_clean") and v.get("clean_v", 1) >= CLEAN_V}
             extra = []
             for v in voice:
-                if v.get("type") == "processed" and v["target"] not in cleaned and v.get("transcript"):
+                if v.get("type") == "processed" and v["target"] not in cleaned and v.get("transcript") and not any(e["target"] == v["target"] for e in extra):
                     t = clean_text(a.model, v["transcript"])
-                    extra.append({"type": "cleaned", "target": v["target"], "model": a.model, "transcript_clean": t,
+                    extra.append({"type": "cleaned", "target": v["target"], "model": a.model, "transcript_clean": t, "clean_v": CLEAN_V,
                                   "processed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
                     print(v["target"], "->", t[:200])
             if extra and a.apply:
@@ -155,7 +157,7 @@ def main():
                                    genders=json.dumps(list((cfg.get("gender") or {}).get("options", {}))))
             out, usage = ask(a.model, prompt, mp3)
             p = {"type": "processed", "target": v["id"], "model": a.model, "transcript": out.get("transcript"),
-                 "transcript_clean": out.get("transcript_clean"), "applied": out,
+                 "transcript_clean": out.get("transcript_clean"), "clean_v": CLEAN_V, "applied": out,
                  "usage": usage, "processed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             if v.get("pass") != "rank" and out.get("verdict") in ("pass", "fail"):
                 manual = [r for r in screen if r["run"] == v["run"] and r["sentence"] == v["sentence"]
