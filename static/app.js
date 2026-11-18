@@ -56,7 +56,12 @@ async function flush() {
   if (flushing) return; flushing = true;
   try {
     for (const item of outbox()) {
-      const res = await fetch(`/api/annotations/${item.eval_id}/${item.kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item.row) });
+      let res;
+      for (let attempt = 0; attempt < 3; attempt++) { // a Hub commit can collide with another one a second earlier: retry quietly first
+        res = await fetch(`/api/annotations/${item.eval_id}/${item.kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item.row) });
+        if (res.ok || res.status === 400) break;
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      }
       if (res.status === 400) { toast("Rejected by the server: " + (await res.text()).slice(0, 120), 5000); setOutbox(outbox().filter((x) => x.id !== item.id)); continue; }
       if (!res.ok) throw new Error("save failed (" + res.status + ")");
       setOutbox(outbox().filter((x) => x.id !== item.id));
@@ -121,7 +126,14 @@ const cur = () => S.queue[S.pos];
 const letter = (i) => (i < 26 ? String.fromCharCode(65 + i) : "V" + (i + 1));
 const isBlind = () => S.mode === "compare" && S.blind;
 const voiceLabel = (c) => (isBlind() ? `Voice ${letter(c.idx)}` : runBy(c.run).name);
-function voiceSub(c) { if (isBlind()) return "Name hidden until you save"; const inp = runBy(c.run).run?.input; return inp ? `Input: ${inp}` : ""; }
+function voiceSub(c) { if (isBlind()) return "Name hidden until you save"; const inp = runBy(c.run).run?.input; return inp ? `Input: ${inp === "nikud" ? "given the nikud" : "plain text (infers the vowels)"}` : ""; }
+// How and when the clip was made (manifest run fields `generated`, `generated_via`); hidden in blind mode, since the route
+// (an API, a GPU) can give the voice away.
+function voiceProv(c) {
+  if (isBlind()) return "";
+  const r = runBy(c.run).run || {};
+  return [r.generated && `Generated ${r.generated}`, r.generated_via && `via ${r.generated_via}`].filter(Boolean).join(" · ");
+}
 
 // ---------- words and reference ----------
 function words(s) {
@@ -187,6 +199,7 @@ function renderClip() {
   }
   $("voiceName").textContent = overall ? `${runBy(c.run).name}: overall` : voiceLabel(c);
   $("voiceSub").textContent = overall ? "A note on this voice as a whole" : voiceSub(c);
+  $("voiceProv").textContent = overall ? "" : voiceProv(c);
   renderVerdict(); renderRatings();
   $("note").value = S.draft.note;
   renderState(); setPlayIcon();
@@ -377,7 +390,7 @@ function saveScreen() {
   if (err) { toast(err, 2200); return false; }
   const row = { run: c.run, run_name: m.name, input: m.run?.input || null, sentence: c.sid,
     verdict: c.sid === "overall" ? "pass" : d.verdict, fail_reasons: d.fail_reasons, word_issues: d.word_issues, gender: d.gender,
-    scores: qualityOn() ? d.scores : null, note: d.note.trim(), blind: isBlind(), source: "screen", client_id: LS("client") };
+    scores: qualityOn() ? d.scores : null, note: d.note.trim(), blind: isBlind(), source: "screen", client_id: LS("client"), annotator: C.annotator || null };
   queueRow("screen", row);
   applyScreenRow(Object.assign({ saved: "just now" }, row));
   S.dirty = false;
@@ -430,7 +443,7 @@ async function vnToggle() {
     const fd = new FormData();
     fd.append("audio", blob, "note");
     Object.entries(c).forEach(([k, v]) => fd.append(k, String(v)));
-    fd.append("seconds", String(secs)); fd.append("client_id", LS("client") || "");
+    fd.append("seconds", String(secs)); fd.append("client_id", LS("client") || ""); fd.append("annotator", C.annotator || "");
     try {
       const r = await fetch(`/api/voice/${encodeURIComponent(S.evalId)}`, { method: "POST", body: fd });
       if (!r.ok) throw new Error(await r.text());
@@ -564,7 +577,7 @@ function confirmPair() {
   if (!p) return;
   if (!o) { toast("Pick 1 A better, 2 B better, 3 tie or 4 both bad", 2000); return; }
   const note = $("rNote").value.trim();
-  const row = { id: uid(), sentence: p.sid, pair: pairId(p.sid, p.left, p.right), left: p.left, right: p.right, outcome: o, note, stage: p.status, client_id: LS("client") };
+  const row = { id: uid(), sentence: p.sid, pair: pairId(p.sid, p.left, p.right), left: p.left, right: p.right, outcome: o, note, stage: p.status, client_id: LS("client"), annotator: C.annotator || null };
   queueRow("pairs", row); S.pairs.push(row);
   const late = [];
   if (o === "both_bad") for (const run of [p.left, p.right]) { // both go back as late fails, with the reason
@@ -811,6 +824,7 @@ function onKey(e) {
 // ---------- boot ----------
 (async function boot() {
   C = await api("config");
+  if (C.annotator) $("annotatorName").textContent = "· annotator: " + C.annotator;
   document.title = C.title; $("appTitle").textContent = C.title;
   document.documentElement.lang = C.language || "en";
   document.body.classList.toggle("rtl", !!C.rtl);

@@ -123,14 +123,23 @@ def main():
             if v.get("pass") != "rank" and out.get("verdict") in ("pass", "fail"):
                 manual = [r for r in screen if r["run"] == v["run"] and r["sentence"] == v["sentence"]
                           and not str(r.get("source", "")).startswith("voice") and r.get("saved", "") > v["saved"]]
-                if manual:
-                    p["conflict"] = "a verdict was saved by hand after this note; not overwritten"
+                if manual and manual[-1]["verdict"] != out["verdict"]:
+                    p["conflict"] = f"the verdict saved by hand ({manual[-1]['verdict']}) differs from the note's; not overwritten"
+                elif manual:  # same verdict: keep the hand-saved row, fill what it lacks from the note
+                    m = dict(manual[-1])
+                    for k in ("fail_reasons", "word_issues"):
+                        m[k] = m.get(k) or out.get(k) or []
+                    m["gender"] = m.get("gender") or out.get("gender")
+                    m["note"] = "; ".join(x for x in (m.get("note"), out.get("note")) if x)
+                    m.update(source=f"{m.get('source') or 'screen'}+voice:{v['id']}", saved=p["processed"])
+                    new_screen.append(m)
+                    p["merged"] = "same verdict as the hand-saved row; its empty fields filled from the note"
                 elif out["verdict"] == "pass" or out.get("fail_reasons"):
                     run = next((m for m in man["models"] if m["slug"] == v["run"]), {})
                     new_screen.append({"run": v["run"], "run_name": run.get("name"), "input": (run.get("run") or {}).get("input"),
                                        "sentence": v["sentence"], "verdict": out["verdict"], "fail_reasons": out.get("fail_reasons") or [],
                                        "word_issues": out.get("word_issues") or [], "gender": out.get("gender"), "scores": None,
-                                       "note": out.get("note") or "", "blind": v.get("blind"), "source": f"voice:{v['id']}",
+                                       "note": out.get("note") or "", "blind": v.get("blind"), "source": f"voice:{v['id']}", "annotator": v.get("annotator"),
                                        "eval_id": ev, "saved": p["processed"], "schema": "tts-annotation/2"})
             new_voice.append(p)
             if a.verbose:

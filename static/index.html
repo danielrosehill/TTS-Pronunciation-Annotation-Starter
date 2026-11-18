@@ -8,7 +8,7 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">🎧 <span id="appTitle">TTS pronunciation annotation</span></div>
+  <div class="brand">🎧 <span id="appTitle">TTS pronunciation annotation</span><span id="annotatorName" class="annotator"></span></div>
   <nav>
     <button data-tab="rate" class="tab on" title="Pass 1: screen each clip pass / fail">1 · Screen</button>
     <button data-tab="rank" class="tab" title="Pass 2: blind pairwise preference among passing clips">2 · Rank</button>
@@ -61,7 +61,11 @@
 
     <div class="player">
       <button id="play" class="play" aria-label="Play">▶</button>
-      <div class="voice"><div id="voiceName" class="vname"></div><div id="voiceSub" class="vsub"></div></div>
+      <div class="voice"><div id="voiceName" class="vname"></div><div id="voiceSub" class="vsub"></div><div id="voiceProv" class="prov"></div></div>
+      <div class="voicenote">
+        <button id="vnBtn" class="vn" title="Record spoken feedback on this clip (R)">🎙 Voice note <kbd>R</kbd></button>
+        <div id="vnState" class="mini"></div>
+      </div>
     </div>
 
     <div class="card screen">
@@ -83,10 +87,6 @@
         <div id="tagList" class="taglist"></div>
         <div id="ratings" class="ratings"></div>
       </details>
-      <div class="voicenote">
-        <button id="vnBtn" class="ghost vn" title="Record spoken feedback on this clip (R)">🎙 Voice note <kbd>R</kbd></button>
-        <span id="vnState" class="mini"></span>
-      </div>
       <label class="axis-label" for="note">Comment (optional)</label>
       <textarea id="note" rows="2" placeholder="Anything worth knowing about this clip…"></textarea>
     </div>
