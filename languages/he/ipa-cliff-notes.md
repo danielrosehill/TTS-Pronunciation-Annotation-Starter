@@ -7,12 +7,17 @@ that falls back on English or Arabic sounds or has to guess the vowels.
 The **Write** column is what to type in the annotation tool. Where a voice is wrong, write the IPA you actually heard,
 not the letter.
 
+## The standard
+
+Unless an evaluation says otherwise, the target is standard, neutral modern Israeli pronunciation. A regional or
+non-native accent is a fail ("Non-standard accent"), even where it is real Hebrew somewhere.
+
 ## Consonants
 
 | Letter | Write | Sounds like | Example | Typical TTS errors |
 | --- | --- | --- | --- | --- |
-| ח, and כ / ך without dagesh | **χ** | Scottish "loch", German "Bach" | חַנָּה Chana `ˈχana`, לֶחֶם `ˈleχem` | **tʃ** (English "ch" in *chana masala*), **k**, **h**, silent. **ħ** is the Mizrahi pharyngeal for ח: a regional variant, not an error, but not standard Israeli |
-| ר | **ʁ** | French "r", back of the throat | רֶגַע `ˈʁeɡa` | **ɹ** (English r), **r** (trilled: Mizrahi/older variant) |
+| ח, and כ / ך without dagesh | **χ** | Scottish "loch", German "Bach" | חַנָּה Chana `ˈχana`, לֶחֶם `ˈleχem` | **tʃ** (English "ch" in *chana masala*), **k**, **h**, silent. **ħ** (the Mizrahi pharyngeal for ח) is a regional variant: real Hebrew, but it fails against the neutral Israeli standard these evaluations use |
+| ר | **ʁ** | French "r", back of the throat | רֶגַע `ˈʁeɡa` | **ɹ** (English r), **r** (trilled: a Mizrahi or older variant; fails against the neutral standard) |
 | צ | **ts** | "ts" in "cats" | צָרִיךְ `tsaˈʁiχ` | **s**, **z**, **tʃ** |
 | צ׳ | **tʃ** | "ch" in "chips" | צ׳יפְּס `tʃips` | **ts** (apostrophe ignored) |
 | ג | **ɡ** | "g" in "go" | גַּן `ɡan` | **dʒ** (English "j") |
@@ -20,7 +25,7 @@ not the letter.
 | ז׳ | **ʒ** | "s" in "measure" | ז׳וּרְנָל `ʒuʁˈnal` | **z** |
 | שׁ (dot right) | **ʃ** | "sh" | שָׁלוֹם `ʃaˈlom` | **s**, when the shin/sin dot is misread |
 | שׂ (dot left), ס | **s** | "s" | שָׂרָה Sarah `saˈʁa` | **ʃ** |
-| א, ע | **ʔ** or nothing | catch in the throat, often dropped | אֲנִי `ʔaˈni` | **ʕ** (Arabic ayin: a Mizrahi variant for ע); a hard ʔ where speech drops it is a style problem, not an error |
+| א, ע | **ʔ** or nothing | catch in the throat, often dropped | אֲנִי `ʔaˈni` | **ʕ** (pharyngeal ayin: a Mizrahi variant for ע, which fails against the neutral standard); a hard ʔ where speech drops it is a style problem, not an error |
 | ה | **h** or nothing | "h", often dropped mid-word | הוּא `hu` | dropped where it should be heard (a word-initial ה) |
 | בּ / ב | **b** / **v** | | בַּיִת `ˈbajit`, אָבִיב `ʔaˈviv` | **b** where **v** belongs (dagesh rule ignored) |
 | כּ / כ | **k** / **χ** | | כֶּלֶב `ˈkelev`, לִכְתּוֹב `liχˈtov` | **k** where **χ** belongs |

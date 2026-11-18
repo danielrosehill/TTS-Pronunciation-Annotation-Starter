@@ -26,6 +26,7 @@ PROMPT = """You are turning an annotator's spoken feedback on one text-to-speech
 The clip read this sentence:
 {context}
 
+{standard}
 Fail-reason categories (use these exact strings): {reasons}
 Observations that do not fail a clip (use these exact strings): {observations}
 Voice gender options: {genders}
@@ -94,7 +95,8 @@ def ask(model, prompt, mp3):
 
 # Light touch (Daniel, 2026-11-18: "you can keep my little weird offhand remarks as well, it's all part of the process").
 CLEAN_V = 2
-RECAT = """An annotator failed this text-to-speech clip and filed it under "{other}". Using only their own words below,
+RECAT = """{standard}
+An annotator failed this text-to-speech clip and filed it under "{other}". Using only their own words below,
 choose the specific fail-reason categories that apply (exact strings, from: {reasons}) and any observations that apply
 (exact strings, from: {observations}). Keep "{other}" only if nothing else fits. Return JSON only:
 {{"fail_reasons": [...], "observations": [...]}}
@@ -127,7 +129,7 @@ def recat(a, cfg, api, repo, ev, screen, derived, notes, applied):
             words = "\n".join(filter(None, [r.get("note")] + said.get(k, [])))
             if words:
                 body = {"model": a.model, "temperature": 0, "response_format": {"type": "json_object"}, "messages": [{"role": "user", "content":
-                        RECAT.format(other=other, reasons=json.dumps(cfg["fail_reasons"], ensure_ascii=False),
+                        RECAT.format(standard=cfg.get("standard", ""), other=other, reasons=json.dumps(cfg["fail_reasons"], ensure_ascii=False),
                                      observations=json.dumps(cfg.get("observations", []), ensure_ascii=False), words=words)}]}
                 req = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=json.dumps(body).encode(),
                                              headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}", "Content-Type": "application/json"})
@@ -215,7 +217,7 @@ def main():
             with tempfile.NamedTemporaryFile(suffix=".mp3") as t:
                 subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", src, "-ac", "1", "-ar", "16000", "-b:a", "48k", t.name], check=True)
                 mp3 = Path(t.name).read_bytes()
-            prompt = PROMPT.format(context=context(man, v), reasons=json.dumps(cfg.get("fail_reasons", []), ensure_ascii=False),
+            prompt = PROMPT.format(context=context(man, v), standard=cfg.get("standard", ""), reasons=json.dumps(cfg.get("fail_reasons", []), ensure_ascii=False),
                                    observations=json.dumps(cfg.get("observations", []), ensure_ascii=False),
                                    genders=json.dumps(list((cfg.get("gender") or {}).get("options", {}))))
             out, usage = ask(a.model, prompt, mp3)

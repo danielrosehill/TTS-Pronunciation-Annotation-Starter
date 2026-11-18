@@ -240,6 +240,7 @@ function renderVerdict() {
   const d = S.draft;
   document.querySelectorAll("#pf button").forEach((b) => b.classList.toggle("on", d.verdict === b.dataset.v));
   $("failBox").hidden = d.verdict !== "fail";
+  $("standardNote").textContent = C.standard || ""; $("standardNote").hidden = !C.standard;
   $("failBox").classList.toggle("ok", !!d.fail_reasons.length);
   $("reasons").innerHTML = (C.fail_reasons || []).map((r, i) => `<button class="chip ${d.fail_reasons.includes(r) ? "on" : ""}" data-r="${esc(r)}">${i < 9 ? `<kbd>${i + 1}</kbd> ` : ""}${esc(r)}</button>`).join("");
   // Observations (Daniel, 2026-11-18): things worth recording that don't fail a clip (a bit fast, gender register...).
