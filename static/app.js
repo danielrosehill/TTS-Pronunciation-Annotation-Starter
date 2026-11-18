@@ -447,7 +447,8 @@ function saveScreen() {
   toast(`${row.verdict === "fail" ? "Failed ✗" : "Passed ✓"}${isBlind() ? `  Voice ${letter(c.idx)} was ${m.name}` : ""}`, isBlind() ? 3500 : 1300);
   return true;
 }
-function go(delta, doSave) {
+async function go(delta, doSave) {
+  await vnFlush();
   S.draft.note = $("note").value;
   if (doSave && !S.draft.verdict && VN.done.has(key(cur().run, cur().sid))) { S.dirty = false; }
   else if (doSave) { if (!saveScreen()) return; }
@@ -463,7 +464,11 @@ function go(delta, doSave) {
 }
 
 // ---------- voice notes: spoken feedback per clip, uploaded at once, applied later by tools/apply_voice_notes.py ----------
-const VN = { rec: null, chunks: [], t0: 0, ctx: null, done: new Set(), failed: null };
+// Voice note recorder (Daniel, 2026-11-18: "the usual controls like pause, record, stop, retake, save ... sometimes I'll
+// want to redo one"). States: idle -> recording <-> paused -> review (play back, retake or save) -> idle. Nothing is
+// uploaded until Save. Moving on (next clip, a vote) with a note still in review saves it: a detailed note is never
+// lost by accident. Keys: R record / stop, K pause / resume, L listen back, S save, T retake (discard and record again).
+const VN = { rec: null, stream: null, chunks: [], ctx: null, state: "idle", active: 0, since: 0, blob: null, url: null, secs: 0, done: new Set(), failed: null, timer: null };
 function vnCtx() {
   if (S.tab === "rank" && S.rank?.pair) { const p = S.rank.pair; return { pass: "rank", sentence: p.sid, left: p.left, right: p.right, blind: true }; }
   const c = cur(); if (!c) return null;
@@ -471,44 +476,94 @@ function vnCtx() {
   return { pass: "screen", run: c.run, run_name: isBlind() ? "" : m.name, sentence: c.sid, blind: isBlind() };
 }
 const vnKey = (x) => x && (x.pass === "rank" ? `rank|${x.sentence}|${x.left}|${x.right}` : key(x.run, x.sentence));
+const vnSecs = () => (VN.active + (VN.state === "recording" ? Date.now() - VN.since : 0)) / 1000;
+const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 function renderVn() {
   const rank = S.tab === "rank", b = $(rank ? "vnBtnR" : "vnBtn"); if (!b) return;
-  const ctx = vnCtx(), on = !!VN.rec;
-  b.classList.toggle("rec", on);
-  b.innerHTML = on ? "■ Stop and send <kbd>R</kbd>" : "🎙 Voice note <kbd>R</kbd>";
-  $(rank ? "vnStateR" : "vnState").textContent = rank && !on && !VN.failed && !VN.done.has(vnKey(ctx)) ? "Say which you prefer and why: pacing, intonation, naturalness, clarity, a word…" : on ? "Recording… say what you heard: pass or fail, why, which word." :
-    VN.failed ? "Upload failed: press R twice to record again, or check the connection." :
-    VN.done.has(vnKey(ctx)) ? "Voice note saved ✓ (transcribed and applied later)" : "";
+  const box = b.parentElement, st = $(rank ? "vnStateR" : "vnState");
+  let ctl = box.querySelector(".vnctl"); if (!ctl) { ctl = document.createElement("span"); ctl.className = "vnctl"; b.after(ctl); }
+  const ctx = vnCtx(), s = VN.state, mine = !VN.ctx || vnKey(VN.ctx) === vnKey(ctx);
+  b.classList.toggle("rec", s === "recording");
+  b.innerHTML = s === "recording" || s === "paused" ? `■ Stop <kbd>R</kbd>` : s === "review" ? `↻ Retake <kbd>T</kbd>` : "🎙 Voice note <kbd>R</kbd>";
+  const btn = (act, label, k) => `<button class="vn2" data-vn="${act}">${label} <kbd>${k}</kbd></button>`;
+  ctl.innerHTML = s === "recording" ? btn("pause", "⏸ Pause", "K") + `<span class="vnt">● ${mmss(vnSecs())}</span>`
+    : s === "paused" ? btn("pause", "● Resume", "K") + `<span class="vnt">⏸ ${mmss(vnSecs())}</span>`
+    : s === "review" ? btn("listen", "▶ Listen back", "L") + btn("save", "✓ Save", "S") + btn("discard", "✕ Discard", "") + `<span class="vnt">${mmss(VN.secs)}</span>` : "";
+  st.textContent = s === "recording" ? (rank ? "Recording… say which you prefer and why." : "Recording… say what you heard: pass or fail, why, which word.")
+    : s === "paused" ? "Paused: K to carry on, R to stop."
+    : s === "review" ? (VN.failed ? "Upload failed: the note is kept here; S to try again, or check the connection." : "Not sent yet: listen back, retake, or save (moving on saves it).") + (mine ? "" : " (Recorded on an earlier item: it is still filed under that one.)") :
+    VN.done.has(vnKey(ctx)) ? "Voice note saved ✓ (transcribed and applied later). R records another." :
+    rank ? "Say which you prefer and why: pacing, intonation, naturalness, clarity, a word…" : "";
+  clearInterval(VN.timer); if (s === "recording") VN.timer = setInterval(renderVn, 500);
 }
-async function vnToggle() {
-  if (VN.rec) { VN.rec.stop(); return; }
+async function vnStart() {
   const ctx = vnCtx(); if (!ctx) return;
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  try { VN.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (e) { toast("Microphone blocked: allow it for this page", 3000); return; }
   $("audio").pause();
   const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-  VN.rec = rec; VN.chunks = []; VN.t0 = Date.now(); VN.ctx = ctx; VN.failed = null;
+  const rec = new MediaRecorder(VN.stream, mime ? { mimeType: mime } : undefined);
+  Object.assign(VN, { rec, chunks: [], ctx, state: "recording", active: 0, since: Date.now(), failed: null });
   rec.ondataavailable = (e) => e.data.size && VN.chunks.push(e.data);
-  rec.onstop = async () => {
-    stream.getTracks().forEach((t) => t.stop());
-    const blob = new Blob(VN.chunks, { type: rec.mimeType || "audio/webm" }), c = VN.ctx, secs = (Date.now() - VN.t0) / 1000;
-    VN.rec = null; renderVn();
-    if (secs < 0.6) { toast("Too short: hold R or tap again to stop", 1800); return; }
-    const fd = new FormData();
-    fd.append("audio", blob, "note");
-    Object.entries(c).forEach(([k, v]) => fd.append(k, String(v)));
-    fd.append("seconds", String(secs)); fd.append("client_id", LS("client") || ""); fd.append("annotator", C.annotator || "");
-    try {
-      const r = await fetch(`/api/voice/${encodeURIComponent(S.evalId)}`, { method: "POST", body: fd });
-      if (!r.ok) throw new Error(await r.text());
-      VN.done.add(vnKey(c)); toast("Voice note saved ✓", 1300); setTimeout(pollSync, 500);
-    } catch (e) { VN.failed = c; toast("Voice note upload failed: " + String(e).slice(0, 80), 4000); }
-    renderVn();
+  rec.onstop = () => {
+    VN.stream.getTracks().forEach((t) => t.stop());
+    VN.secs = vnSecs() || VN.active / 1000; VN.rec = null;
+    if (VN.state === "discarding" || VN.secs < 0.6) { if (VN.state !== "discarding") toast("Too short: nothing kept", 1500); vnReset(); return; }
+    VN.blob = new Blob(VN.chunks, { type: rec.mimeType || "audio/webm" });
+    if (VN.url) URL.revokeObjectURL(VN.url); VN.url = URL.createObjectURL(VN.blob);
+    VN.state = "review"; renderVn();
   };
   rec.start(); renderVn();
 }
+function vnStop() { if (!VN.rec) return; if (VN.state === "recording") VN.active += Date.now() - VN.since; VN.state = "stopping"; VN.rec.stop(); }
+function vnPause() {
+  if (VN.state === "recording") { VN.rec.pause(); VN.active += Date.now() - VN.since; VN.state = "paused"; }
+  else if (VN.state === "paused") { VN.rec.resume(); VN.since = Date.now(); VN.state = "recording"; }
+  renderVn();
+}
+function vnReset() { const a = $("vnPlay"); if (a) a.pause(); Object.assign(VN, { state: "idle", blob: null, ctx: null, chunks: [], active: 0 }); renderVn(); }
+function vnListen() {
+  if (!VN.url) return; let a = $("vnPlay");
+  if (!a) { a = document.createElement("audio"); a.id = "vnPlay"; a.hidden = true; document.body.appendChild(a); }
+  $("audio").pause(); if (a.src !== VN.url) a.src = VN.url; if (a.paused) a.play().catch(() => {}); else a.pause();
+}
+function vnDiscard() { if (VN.rec) { VN.state = "discarding"; VN.rec.stop(); } else vnReset(); }
+function vnRetake() { vnDiscard(); setTimeout(vnStart, 150); }
+async function vnSave() {
+  if (VN.state !== "review" || !VN.blob) return;
+  const c = VN.ctx, blob = VN.blob, secs = VN.secs;
+  const fd = new FormData();
+  fd.append("audio", blob, "note");
+  Object.entries(c).forEach(([k, v]) => fd.append(k, String(v)));
+  fd.append("seconds", String(secs)); fd.append("client_id", LS("client") || ""); fd.append("annotator", C.annotator || "");
+  try {
+    const r = await fetch(`/api/voice/${encodeURIComponent(S.evalId)}`, { method: "POST", body: fd });
+    if (!r.ok) throw new Error(await r.text());
+    VN.done.add(vnKey(c)); toast("Voice note saved ✓", 1300); setTimeout(pollSync, 500); VN.failed = null; vnReset();
+  } catch (e) { VN.failed = c; toast("Voice note upload failed: " + String(e).slice(0, 80), 4000); renderVn(); }
+}
+// Moving on: a note in review is saved, a note still recording is stopped and saved, so nothing is lost.
+async function vnFlush() {
+  if (VN.state === "recording" || VN.state === "paused") { await new Promise((res) => { const o = VN.rec.onstop; VN.rec.onstop = () => { o(); res(); }; vnStop(); }); }
+  if (VN.state === "review") await vnSave();
+}
+function vnToggle() { // R
+  if (VN.state === "idle") vnStart(); else if (VN.state === "recording" || VN.state === "paused") vnStop();
+}
+function vnKeys(k) { // returns true if the key was the recorder's
+  if (k === "r") { vnToggle(); return true; }
+  if (k === "k" && (VN.state === "recording" || VN.state === "paused")) { vnPause(); return true; }
+  if (VN.state === "review") {
+    if (k === "l") { vnListen(); return true; }
+    if (k === "s") { vnSave(); return true; }
+    if (k === "t") { vnRetake(); return true; }
+  }
+  return false;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-vn]"); if (!b) return;
+  ({ pause: vnPause, listen: vnListen, save: vnSave, discard: vnDiscard })[b.dataset.vn]?.();
+});
 
 // ---------- rank: adaptive play-off per sentence ----------
 // Who meets head to head on an item. Default: clips that passed on that item. With `rank_by: "survivors"` (Daniel,
@@ -661,9 +716,10 @@ function playSide(side) {
   }
   a.src = src; a.dataset.src = src; a.play().catch(() => {}); S.rank.playing = side;
 }
-function confirmPair() {
+async function confirmPair() {
   const p = S.rank.pair, o = S.rank.choice;
   if (!p) return;
+  if (o) await vnFlush();
   if (!o) { toast("Pick 1 A better, 2 B better, 3 tie or 4 both bad", 2000); return; }
   const note = $("rNote").value.trim();
   const row = { id: uid(), sentence: p.sid, pair: pairId(p.sid, p.left, p.right), left: p.left, right: p.right, outcome: o, note, stage: p.status, ...(p.bracket ? { bracket: p.bracket } : {}), client_id: LS("client"), annotator: C.annotator || null };
@@ -855,8 +911,9 @@ function wire() {
   $("toArena").addEventListener("click", () => tab("rank"));
   $("toBoard").addEventListener("click", () => tab("board"));
   $("boardCols").addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { if (b.dataset.go === "rate") start(); else tab(b.dataset.go); } });
-  $("vnBtn").addEventListener("click", vnToggle);
-  $("vnBtnR").addEventListener("click", vnToggle);
+  const vnMain = () => (VN.state === "review" ? vnRetake() : vnToggle());
+  $("vnBtn").addEventListener("click", vnMain);
+  $("vnBtnR").addEventListener("click", vnMain);
   const icons = () => { const a = $("audio"); ["L", "R"].forEach((x) => { const b = $("play" + x); if (b) b.textContent = !a.paused && S.rank.playing === (x === "L" ? "left" : "right") ? "❚❚" : "▶"; }); };
   ["play", "pause", "ended"].forEach((ev) => $("audio").addEventListener(ev, icons));
   $("next").addEventListener("click", () => go(1, false));
@@ -909,8 +966,8 @@ function onKey(e) {
     const sa = scaleAxes(), g = genderOpts().find((o) => o.k === k);
     let hit = null;
     if (e.key.length === 1) for (const a of qAxes()) if (!isScale(a)) for (const o of axisOptions(a)) if (o.key && o.key.toLowerCase() === k) hit = { a, o };
+    if (vnKeys(k)) return;
     if (e.key === " ") { e.preventDefault(); $("play").click(); }
-    else if (k === "r") vnToggle();
     else if (k === "p") setResult("pass");
     else if (k === "x") setResult("fail");
     else if (g) { S.draft.gender = g.v; S.prefilled = false; touch(); renderVerdict(); }
@@ -925,8 +982,8 @@ function onKey(e) {
     else if (e.key === "ArrowLeft") go(-1, false);
   } else if (S.tab === "rank") {
     const map = { 1: "left", 2: "right", 3: "tie", 4: "both_bad" };
-    if (k === "r") vnToggle();
-    else if (k === "a") playSide("left");
+    if (vnKeys(k)) return;
+    if (k === "a") playSide("left");
     else if (k === "b") playSide("right");
     else if (map[e.key]) { S.rank.choice = map[e.key]; renderRank(); }
     else if (e.key === "Enter") { e.preventDefault(); confirmPair(); }

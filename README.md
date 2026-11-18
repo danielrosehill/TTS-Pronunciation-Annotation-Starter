@@ -93,8 +93,19 @@ There are two ways through:
 
 Annotation gets fiddly by hand. So every clip, and every pair, has a **🎙 Voice note** button (key **R**): say what you
 heard, following the agreed structure (pass or fail, why, which word, which syllable was stressed and which should
-have been, what it sounded like, the voice's gender). The recording uploads at once, and you can move on without
-clicking anything else.
+have been, what it sounded like, the voice's gender). The recorder has the usual controls, so a long, detailed note
+can be paused and redone:
+
+| Key | Does |
+| --- | --- |
+| `R` | Record; press again to stop |
+| `K` | Pause / resume while recording |
+| `L` | Listen back to the note before sending it |
+| `S` | Save (upload) it |
+| `T` | Retake: discard it and record again at once (or ✕ Discard) |
+
+Nothing is uploaded until you save. Moving on (next clip, or confirming a vote) saves a note that is still under review
+or still recording, so a note is never lost by accident. After saving, `R` records another note for the same item.
 
 1. **Define** the annotation structure (the config: fail reasons, gender options, word-level tag types).
 2. **Record** your feedback per clip, in that structure, by voice.

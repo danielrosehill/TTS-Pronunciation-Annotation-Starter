@@ -235,3 +235,6 @@ body.rtl .syls { direction: ltr; }
 
 .done h2 { margin: 4px 0 8px; } .done p { color: var(--dim); }
 .board .go { margin-top: 10px; width: 100%; }
+.vnctl { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.vn2 { font-size: 15px; padding: 9px 14px; border-radius: 30px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font-weight: 600; white-space: nowrap; }
+.vnt { font-variant-numeric: tabular-nums; font-weight: 700; color: #d92d20; }
