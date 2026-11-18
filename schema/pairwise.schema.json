@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/danielrosehill/TTS-Pronunciation-Annotation-Starter/schema/pairwise.schema.json",
+  "title": "Pairwise comparison (tts-pairwise/1)",
+  "description": "One line of annotations/<eval_id>/pairs.jsonl (pass 2 of 'screen, then rank'): a blind preference between two clips of the same sentence that both passed the screen. Append-only; an undo line cancels the comparison it targets.",
+  "type": "object",
+  "required": [
+    "schema",
+    "eval_id",
+    "saved"
+  ],
+  "oneOf": [
+    {
+      "title": "Comparison",
+      "required": [
+        "id",
+        "sentence",
+        "left",
+        "right",
+        "outcome"
+      ],
+      "properties": {
+        "type": {
+          "not": {
+            "const": "undo"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "sentence": {
+          "type": "string"
+        },
+        "pair": {
+          "type": "string",
+          "description": "sentence|runA|runB with the runs sorted"
+        },
+        "left": {
+          "type": "string",
+          "description": "Run shown as A"
+        },
+        "right": {
+          "type": "string",
+          "description": "Run shown as B"
+        },
+        "outcome": {
+          "enum": [
+            "left",
+            "right",
+            "tie",
+            "both_bad"
+          ],
+          "description": "both_bad also writes late-fail screen rows for both clips"
+        },
+        "stage": {
+          "type": "string",
+          "description": "Scheduler stage when it was served: opening, playoff, tiebreak or voting (all pairs)"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "title": "Undo",
+      "required": [
+        "type",
+        "target"
+      ],
+      "properties": {
+        "type": {
+          "const": "undo"
+        },
+        "target": {
+          "type": "string",
+          "description": "id of the cancelled comparison"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "tts-pairwise/1"
+    },
+    "eval_id": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "saved": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

@@ -2,8 +2,9 @@
 
 Configuration: config.json (path in CONFIG_PATH, default ./config.json), with environment overrides (see README).
 Evaluations come from a registry JSONL (one evaluation per line: eval_id, title, date, manifest) or from one clip
-manifest. Annotations are append-only JSON lines in a Hugging Face dataset, one file per evaluation,
-annotations/<eval_id>.jsonl; the latest line per (run, sentence) wins. LOCAL_ONLY=1 keeps them in a local folder.
+manifest. Method "screen, then rank": annotations/<eval_id>/screen.jsonl (pass/fail per clip) and
+annotations/<eval_id>/pairs.jsonl (pairwise preferences among passing clips), append-only JSON lines in a Hugging Face
+dataset. LOCAL_ONLY=1 keeps them in a local folder.
 """
 import json, os, re, threading, time, urllib.request
 from pathlib import Path
@@ -28,6 +29,18 @@ DEFAULTS = {
         {"key": "use", "type": "choice", "label": "Use this voice?", "options": ["Yes", "Maybe", "No"]},
     ],
     "minor_tags": ["Skipped", "Added sound", "Unnatural pause", "Accent", "Other"],
+    # Screen, then rank: pass 1 screens each clip pass/fail (a fail needs a reason); pass 2 ranks the survivors pairwise.
+    # `quality` adds the `axes` rows to the optional detail layer (off by default).
+    "passes": {"screen": True, "rank": True, "quality": False},
+    # Pass 1 judges the whole clip; a fail needs one or more of these categories (keys 1-n while failing).
+    "fail_reasons": ["Mispronunciation", "Wrong emphasis (stress)", "Glitch / artefact", "Truncated / skipped words", "Wrong voice or language", "Other"],
+    "other_reason": "Other",                      # needs a comment
+    "tag_reasons": {"stress": "Wrong emphasis (stress)", "mispronunciation": "Mispronunciation"},  # optional detail -> category
+    "rank_reject_reason": "Rejected in ranking (both bad)",
+    "gender": {"label": "Voice gender", "options": {"female": "f", "male": "m", "unclear": "u"}},
+    # pairing "playoff" (default): opening round, knock out any head-to-head loss, leader vs each unbeaten challenger,
+    # one tie-break rematch between drawn finalists. "all": every pair of passing clips.
+    "rank": {"pairing": "playoff"},
     "reference_label": "Reference (machine): check it",
     "notes_repo": None,
     "notes_private": True,
@@ -80,7 +93,6 @@ LOCAL_ONLY = os.environ.get("LOCAL_ONLY") == "1" or not CFG["notes_repo"]
 STORE = Path(os.environ.get("ANNOTATION_CACHE", "/tmp/annotations"))
 STORE.mkdir(parents=True, exist_ok=True)
 ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,80}$")
-ROW = ["run", "run_name", "input", "sentence", "scores", "word_tags", "note", "blind", "client_id"]
 
 lock = threading.Lock()
 _evals = {"t": 0, "v": None}
@@ -140,31 +152,45 @@ def manifest(eval_id):
     return d
 
 
-def path_for(eval_id):
-    p = STORE / f"{eval_id}.jsonl"
-    if eval_id not in _pulled:
+# Passes and their files: annotations/<eval_id>/<kind>.jsonl, append-only.
+#   screen: tts-annotation/2, one pass/fail per clip; the latest line per (run, sentence) wins.
+#   pairs:  tts-pairwise/1, one line per comparison; {"type": "undo", "target": id} lines cancel one.
+KINDS = {"screen": "tts-annotation/2", "pairs": "tts-pairwise/1"}
+SCREEN_ROW = ["run", "run_name", "input", "sentence", "verdict", "fail_reasons", "word_issues", "gender", "scores", "note", "blind", "source", "client_id"]
+PAIR_ROW = ["id", "type", "target", "sentence", "pair", "left", "right", "outcome", "stage", "note", "client_id"]
+
+
+def kind_ok(kind):
+    if kind not in KINDS:
+        raise HTTPException(404, "unknown annotation kind")
+
+
+def path_for(eval_id, kind):
+    p = STORE / eval_id / f"{kind}.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    k = (eval_id, kind)
+    if k not in _pulled:
         if not LOCAL_ONLY:
             from huggingface_hub import hf_hub_download
             try:
-                src = hf_hub_download(CFG["notes_repo"], f"annotations/{eval_id}.jsonl", repo_type="dataset", token=TOKEN, force_download=True)
+                src = hf_hub_download(CFG["notes_repo"], f"annotations/{eval_id}/{kind}.jsonl", repo_type="dataset", token=TOKEN, force_download=True)
                 p.write_text(Path(src).read_text(encoding="utf8"), encoding="utf8")
             except Exception:
-                p.exists() or p.write_text("", encoding="utf8")
-        else:
-            p.exists() or p.write_text("", encoding="utf8")
-        _pulled.add(eval_id)
+                pass
+        _pulled.add(k)
     if not p.exists():
         p.write_text("", encoding="utf8")
     return p
 
 
-def latest(eval_id):
-    out = {}
-    for l in path_for(eval_id).read_text(encoding="utf8").splitlines():
-        if l.strip():
-            n = json.loads(l)
-            out[(n["run"], n["sentence"])] = n
-    return list(out.values())
+def rows(eval_id, kind):
+    out = [json.loads(l) for l in path_for(eval_id, kind).read_text(encoding="utf8").splitlines() if l.strip()]
+    if kind == "screen":
+        latest = {}
+        for n in out:
+            latest[(n["run"], n["sentence"])] = n
+        return list(latest.values())
+    return out
 
 
 @app.get("/api/config")
@@ -185,7 +211,8 @@ def get_evals():
         try:
             d = manifest(e["eval_id"])
             r["n_clips"] = sum(len(m["clips"]) for m in d["models"])
-            r["n_rated"] = sum(1 for n in latest(e["eval_id"]) if n["sentence"] != "overall")
+            r["n_rated"] = sum(1 for n in rows(e["eval_id"], "screen") if n["sentence"] != "overall")
+            r["n_pairs"] = sum(1 for n in rows(e["eval_id"], "pairs") if n.get("type") != "undo")
         except Exception as ex:
             r["error"] = str(ex)[:200]
         rows.append(r)
@@ -197,23 +224,30 @@ def get_eval(eval_id: str):
     return manifest(eval_id)
 
 
-@app.get("/api/annotations/{eval_id}")
-def get_annotations(eval_id: str):
-    find(eval_id)
+@app.get("/api/annotations/{eval_id}/{kind}")
+def get_annotations(eval_id: str, kind: str):
+    find(eval_id); kind_ok(kind)
     with lock:
-        return latest(eval_id)
+        return rows(eval_id, kind)
 
 
-@app.post("/api/annotations/{eval_id}")
-async def post_annotation(eval_id: str, request: Request):
-    find(eval_id)
+@app.post("/api/annotations/{eval_id}/{kind}")
+async def post_annotation(eval_id: str, kind: str, request: Request):
+    find(eval_id); kind_ok(kind)
     body = await request.json()
-    if not body.get("run") or not body.get("sentence"):
-        raise HTTPException(400, "run and sentence are required")
-    row = {k: body.get(k) for k in ROW}
-    row.update(eval_id=eval_id, saved=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), schema="tts-annotation/1")
+    if kind == "screen":
+        if not body.get("run") or not body.get("sentence") or body.get("verdict") not in ("pass", "fail"):
+            raise HTTPException(400, "run, sentence and verdict (pass|fail) are required")
+        if body["verdict"] == "fail" and not body.get("fail_reasons"):
+            raise HTTPException(400, "a fail needs at least one fail_reasons category")
+        row = {k: body.get(k) for k in SCREEN_ROW}
+    else:
+        if body.get("type") != "undo" and (not body.get("sentence") or body.get("outcome") not in ("left", "right", "tie", "both_bad")):
+            raise HTTPException(400, "sentence and outcome (left|right|tie|both_bad) are required")
+        row = {k: body.get(k) for k in PAIR_ROW if body.get(k) is not None}
+    row.update(eval_id=eval_id, saved=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), schema=KINDS[kind])
     with lock:
-        p = path_for(eval_id)
+        p = path_for(eval_id, kind)
         with open(p, "a", encoding="utf8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         if not LOCAL_ONLY:
@@ -221,8 +255,8 @@ async def post_annotation(eval_id: str, request: Request):
             try:
                 api = HfApi(token=TOKEN)
                 api.create_repo(CFG["notes_repo"], repo_type="dataset", private=CFG["notes_private"], exist_ok=True)
-                api.upload_file(path_or_fileobj=str(p), path_in_repo=f"annotations/{eval_id}.jsonl", repo_id=CFG["notes_repo"],
-                                repo_type="dataset", commit_message=f"{eval_id}: {row['run']} {row['sentence']}")
+                api.upload_file(path_or_fileobj=str(p), path_in_repo=f"annotations/{eval_id}/{kind}.jsonl", repo_id=CFG["notes_repo"],
+                                repo_type="dataset", commit_message=f"{eval_id} {kind}: {row.get('run') or row.get('id') or ''} {row.get('sentence') or ''}")
             except Exception as ex:  # roll back so the client keeps the row in its outbox and retries
                 lines = p.read_text(encoding="utf8").splitlines()
                 p.write_text("".join(l + "\n" for l in lines[:-1]), encoding="utf8")

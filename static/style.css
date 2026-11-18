@@ -180,3 +180,32 @@ body.rtl .syls { direction: ltr; }
 .ipa-e button.ins { float: right; }
 .ipahelp-open { margin-top: 6px; font-size: 13px; }
 .md { font-size: 13px; } .md table { font-size: 12px; } .md td, .md th { padding: 4px 6px; } .md code { font-family: "Charis SIL", "Doulos SIL", serif; }
+
+/* screen, then rank */
+.method { font-size: 14px; }
+.seg.pf { max-width: 420px; }
+.seg.pf button { padding: 14px 0; font-size: 19px; }
+.seg.pf button.pass.on { background: var(--good); border-color: var(--good); color: #fff; }
+.seg.pf button.fail.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+.failbox { margin: 10px 0 4px; padding: 10px; border: 1px dashed var(--bad); border-radius: 10px; }
+.failbox.ok { border-color: var(--good); }
+.axis-label.gl { margin-top: 14px; }
+.seg.use button.on[data-v="female"], .seg.use button.on[data-v="male"], .seg.use button.on[data-v="unclear"] { background: var(--acc); border-color: var(--acc); color: var(--acc-fg); }
+.ratings .axis { padding-left: 0; padding-right: 0; }
+.duel { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; margin: 14px 0; }
+.side { background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.side.chosen { border-color: var(--good); box-shadow: 0 0 0 2px var(--good); }
+.side.tie { border-color: var(--acc); }
+.side.bad { border-color: var(--bad); }
+.sname { font-weight: 700; font-size: 18px; }
+.vs { color: var(--dim); font-weight: 700; }
+.seg.outcomes { grid-auto-flow: row; grid-template-columns: repeat(4, 1fr); margin-bottom: 10px; }
+.seg.outcomes button { font-size: 15px; padding: 12px 0; }
+.seg.outcomes button.on { background: var(--acc); color: var(--acc-fg); border-color: var(--acc); }
+.seg.outcomes button.bad.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+@media (max-width: 640px) { .seg.outcomes { grid-template-columns: 1fr 1fr; } .tab { padding: 6px 8px; font-size: 13px; } }
+.dot.fail { background: var(--bad); border-color: var(--bad); color: #fff; }
+.detail { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.detail summary { cursor: pointer; color: var(--acc); font-size: 14px; }
+.chip kbd { margin-right: 2px; }
+.chip.on kbd { color: #fff; border-color: rgba(255,255,255,.7); background: transparent; }

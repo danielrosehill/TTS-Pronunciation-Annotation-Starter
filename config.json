@@ -20,21 +20,6 @@
       "type": "scale",
       "label": "Pronunciation",
       "hint": "Right sounds and stress, word by word?"
-    },
-    {
-      "key": "use",
-      "type": "choice",
-      "label": "Use this voice?",
-      "options": [
-        "Yes",
-        "Maybe",
-        "No"
-      ],
-      "keys": {
-        "Yes": "y",
-        "Maybe": "m",
-        "No": "n"
-      }
     }
   ],
   "minor_tags": [
@@ -49,5 +34,35 @@
   "evals_registry": null,
   "manifest_url": "/static/examples/demo-manifest.json",
   "manifest_eval_id": "demo",
-  "manifest_title": "Demo manifest (no audio)"
+  "manifest_title": "Demo manifest (no audio)",
+  "passes": {
+    "screen": true,
+    "rank": true,
+    "quality": false
+  },
+  "fail_reasons": [
+    "Mispronunciation",
+    "Wrong emphasis (stress)",
+    "Glitch / artefact",
+    "Truncated / skipped words",
+    "Wrong voice or language",
+    "Other"
+  ],
+  "gender": {
+    "label": "Voice gender",
+    "options": {
+      "female": "f",
+      "male": "m",
+      "unclear": "u"
+    }
+  },
+  "rank": {
+    "pairing": "playoff"
+  },
+  "other_reason": "Other",
+  "tag_reasons": {
+    "stress": "Wrong emphasis (stress)",
+    "mispronunciation": "Mispronunciation"
+  },
+  "rank_reject_reason": "Rejected in ranking (both bad)"
 }

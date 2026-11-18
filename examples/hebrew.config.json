@@ -27,37 +27,6 @@
       "type": "scale",
       "label": "Hebrew accuracy",
       "hint": "Right words, stress and Israeli accent?"
-    },
-    {
-      "key": "nikud",
-      "type": "binary",
-      "label": "Vowels match the nikud?",
-      "short": "Vowels match nikud",
-      "labels": {
-        "yes": "Yes",
-        "no": "No"
-      },
-      "keys": {
-        "yes": "v",
-        "no": "x"
-      },
-      "hint": "Every vowel heard matches the pointed text. On a plain-text clip this is the model's nikud inference. If No, tag the word(s) as mispronunciation."
-    },
-    {
-      "key": "use",
-      "type": "choice",
-      "label": "Use it as the reference voice?",
-      "short": "Use it",
-      "options": [
-        "Yes",
-        "Maybe",
-        "No"
-      ],
-      "keys": {
-        "Yes": "y",
-        "Maybe": "m",
-        "No": "n"
-      }
     }
   ],
   "minor_tags": [
@@ -69,5 +38,35 @@
   ],
   "reference_label": "Machine reference: check it",
   "notes_repo": "your-user/your-annotations-dataset",
-  "evals_registry": "https://huggingface.co/datasets/Hebrish/Hebrew-TTS-Evaluations/resolve/main/evals.jsonl"
+  "evals_registry": "https://huggingface.co/datasets/Hebrish/Hebrew-TTS-Evaluations/resolve/main/evals.jsonl",
+  "passes": {
+    "screen": true,
+    "rank": true,
+    "quality": false
+  },
+  "fail_reasons": [
+    "Mispronunciation",
+    "Wrong emphasis (stress)",
+    "Glitch / artefact",
+    "Truncated / skipped words",
+    "Wrong voice or language",
+    "Other"
+  ],
+  "gender": {
+    "label": "Voice gender",
+    "options": {
+      "female": "f",
+      "male": "m",
+      "unclear": "u"
+    }
+  },
+  "rank": {
+    "pairing": "playoff"
+  },
+  "other_reason": "Other",
+  "tag_reasons": {
+    "stress": "Wrong emphasis (stress)",
+    "mispronunciation": "Mispronunciation"
+  },
+  "rank_reject_reason": "Rejected in ranking (both bad)"
 }

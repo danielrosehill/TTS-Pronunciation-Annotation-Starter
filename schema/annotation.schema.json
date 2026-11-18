@@ -1,51 +1,58 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/danielrosehill/TTS-Pronunciation-Annotation-Starter/schema/annotation.schema.json",
-  "title": "TTS annotation row (tts-annotation/1)",
-  "description": "One line of annotations/<eval_id>.jsonl. Append-only: the latest line per (run, sentence) is the current annotation.",
+  "title": "Screen row (tts-annotation/2)",
+  "description": "One line of annotations/<eval_id>/screen.jsonl (pass 1 of 'screen, then rank'): the whole clip passes or fails; a fail needs one or more clip-level fail_reasons. word_issues and scores are an optional detail layer. Append-only: the latest line per (run, sentence) wins.",
   "type": "object",
   "required": [
     "schema",
     "eval_id",
     "run",
     "sentence",
-    "scores",
-    "word_tags",
+    "verdict",
     "saved"
   ],
   "properties": {
     "schema": {
-      "const": "tts-annotation/1"
+      "const": "tts-annotation/2"
     },
     "eval_id": {
-      "type": "string",
-      "description": "The evaluation (registry eval_id)"
+      "type": "string"
     },
     "run": {
       "type": "string",
-      "description": "Model run slug from the clip manifest (models[].slug)"
+      "description": "Model run slug from the clip manifest"
     },
     "run_name": {
       "type": [
         "string",
         "null"
-      ],
-      "description": "Display name of the run at save time"
+      ]
     },
     "input": {
       "type": [
         "string",
         "null"
       ],
-      "description": "How the run was fed, from the manifest (e.g. plain, nikud)"
+      "description": "How the run was fed (e.g. plain, nikud)"
     },
     "sentence": {
       "type": "string",
-      "description": "Sentence id from the manifest, or \"overall\" for a note on the run as a whole"
+      "description": "Sentence id, or \"overall\" for a note on the run as a whole"
+    },
+    "gender": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Voice gender heard: a key of config gender.options (default female, male, unclear)"
     },
     "scores": {
-      "type": "object",
-      "description": "Axis key (config axes) -> answer. scale axes: integer 1-5; binary axes: \"yes\" or \"no\"; choice axes: one of the axis options. A missing key = not judged.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Optional detail layer: quality rows (config axes, when passes.quality): scale 1-5, binary yes/no, or a choice option",
       "additionalProperties": {
         "oneOf": [
           {
@@ -54,18 +61,52 @@
             "maximum": 5
           },
           {
-            "enum": [
-              "yes",
-              "no"
-            ]
-          },
-          {
             "type": "string"
           }
         ]
       }
     },
-    "word_tags": {
+    "note": {
+      "type": "string"
+    },
+    "blind": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "source": {
+      "enum": [
+        "screen",
+        "rank"
+      ],
+      "description": "rank = a late fail from a 'both bad' comparison"
+    },
+    "client_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "saved": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "description": "Pass 1 judges the whole clip (the sentence as rendered)"
+    },
+    "fail_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Clip-level categories (config fail_reasons; default Mispronunciation, Wrong emphasis (stress), Glitch / artefact, Truncated / skipped words, Wrong voice or language, Other). Required (one or more) on a fail. 'Rejected in ranking (both bad)' marks a late fail from pass 2."
+    },
+    "word_issues": {
       "type": "array",
       "items": {
         "oneOf": [
@@ -187,30 +228,37 @@
             }
           }
         ]
-      }
-    },
-    "note": {
-      "type": "string",
-      "description": "Overall comment on this rendition"
-    },
-    "blind": {
-      "type": [
-        "boolean",
-        "null"
-      ],
-      "description": "True if the run's name was hidden when it was annotated"
-    },
-    "client_id": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Random id of the browser that saved it"
-    },
-    "saved": {
-      "type": "string",
-      "format": "date-time",
-      "description": "UTC, set by the server"
+      },
+      "description": "Optional detail layer: structured word-level issues (stress heard vs should be, IPA heard vs expected, minor tags). Never required."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "fail"
+          },
+          "sentence": {
+            "not": {
+              "const": "overall"
+            }
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "required": [
+          "fail_reasons"
+        ],
+        "properties": {
+          "fail_reasons": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }
