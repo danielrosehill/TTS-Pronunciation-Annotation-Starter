@@ -620,8 +620,12 @@ function scheduleIn(sid, items) {
   res.unbeaten = unbeaten;
   // opening round. A voice with a loss is out at once, even mid-opening (Daniel, 2026-11-18: tighten the Arena), so no
   // opening pair involving it is served; its would-be opponent meets the leader in the play-off instead.
-  const order = shuffled(items, S.evalId + sid + "open"), opening = [];
-  for (let i = 0; i < order.length; i += 2) opening.push([order[i], order[(i + 1) % order.length]]);
+  // Only voices that have not played yet in this bracket get an opening match (fixed 2026-11-18: the opening was
+  // reshuffled over all items whenever a new voice passed Screening, serving fresh "opening" pairs to voices that had
+  // long played, so the queue kept growing). A newcomer left without a partner meets the leader in the play-off.
+  const played = new Set(vs.flatMap((v) => [v.left, v.right]));
+  const order = shuffled(items.filter((x) => !played.has(x)), S.evalId + sid + "open"), opening = [];
+  for (let i = 0; i + 1 < order.length; i += 2) opening.push([order[i], order[i + 1]]);
   const pendingOpen = opening.filter(([a, b]) => a !== b && !losses[a] && !losses[b] && !met.has(pairId(sid, a, b)));
   if (pendingOpen.length) { res.status = "opening"; res.pairs = pendingOpen.map(([a, b]) => sides(sid, a, b)); res.total = res.done + res.pairs.length; return res; }
   if (!unbeaten.length) { res.status = "cycle"; res.leader = btFit(vs, items).order[0]; res.total = res.done; return res; }
@@ -855,7 +859,10 @@ function start() {
   buildQueue();
   const saved = LS("pos." + S.evalId + "." + S.mode + (S.mode === "voice" ? "." + S.voice : ""));
   const firstOpen = S.queue.findIndex((x) => !S.screen.has(key(x.run, x.sid)));
-  tab("rate"); openClip(saved != null ? saved : Math.max(0, firstOpen));
+  // A saved position is an index into the queue as it was; with "only unscreened" the queue shrinks between sessions,
+  // so the old index landed on the last clip and showed one at a time (fixed 2026-11-18). Start at the first open clip.
+  const resume = S.unscreenedOnly || (saved != null && saved >= S.queue.length) ? -1 : saved;
+  tab("rate"); openClip(resume != null && resume >= 0 ? resume : Math.max(0, firstOpen));
 }
 function wire() {
   $("go").addEventListener("click", async () => { if (!S.data) await loadEval(); start(); });

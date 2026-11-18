@@ -73,7 +73,8 @@ There are two ways through:
 - **Keys:** `A` and `B` play them. `1` = A better, `2` = B better, `3` = tie, `4` = both bad. "Both bad" sends both
   clips back to the screen as late fails, with that reason. `Enter` confirms and `U` undoes the last comparison.
 - **Scheduling, `rank.pairing: "playoff"` (the default):** an adaptive play-off for each sentence.
-  1. An opening round, in which every survivor plays once. With an odd number, one plays twice.
+  1. An opening round for the clips that have not played yet: each plays one other newcomer (an odd one out goes
+     straight to the leader). Clips that already played never get a new opening match, so the list only shrinks.
   2. Any clip with a head-to-head loss is knocked out, at once: the opening round skips pairs with a clip already out.
   3. The **leader** is the unbeaten clip with the most wins; Bradley–Terry breaks a tie between leaders. It then plays
      each unbeaten challenger it hasn't met.
