@@ -12,14 +12,19 @@
                 rank_sentence (the Arena item, e.g. "p01"), font_stack, annotator, links: [{label, url}],
                 categories: {"<provenance.category>": "<heading>"}, method (HTML),
                 contact (HTML, optional: a card for "want your model included?" and caveats),
+                profile_legend (HTML, optional: explains the profile columns),
                 group_by (optional, e.g. "voice_gender": Arena brackets, as rank.group_by in the app), group_by_label}
   Voice gender: a run's run.voice_gender ("female" | "male", from the clip manifest) adds a "Best by voice" panel with the
   top Arena voice for each gender, and a gender tag on every row. Runs without it are left out of that panel.
 
+  Voice profile: a run's m.profile in the manifest (wpm, f0_median_hz, f0_sd_st, centroid_hz, hnr_db, labels, flags;
+  measured from the clips, no listening) fills the "Find a voice by type" table, with the annotator's character notes
+  from voice-character.jsonl (tts-voice-character/1: run, uses[], character[], note; latest row per run wins).
   Reads: the registry row (data_json = clip manifest), and from <notes_repo>/annotations/<eval_id>/:
     screen.jsonl + screen-voice.jsonl   verdicts; latest per (run, sentence) wins; a run is out at its first fail
     pairs.jsonl + pairs-voice.jsonl     head-to-head votes (undo rows cancel their target) and explanation rows
     voice.jsonl + voice-applied.jsonl   spoken notes and their tidied transcripts
+    voice-character.jsonl               the annotator's freeform notes on what a voice suits (optional)
   Ranking: Bradley-Terry (MM iterations, small prior per played pair), shown as a 1000-centred Elo-style score.
 -->
 <style>
@@ -60,6 +65,10 @@
   .best h4 { margin:0 0 4px; font-size:14px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
   .contact { background:var(--card); border:1px solid var(--acc); border-radius:12px; padding:6px 18px; margin:18px 0; }
   .method { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:6px 18px; }
+  .finder .f { display:inline-block; margin:2px 6px 2px 0; padding:3px 11px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--fg); cursor:pointer; font-size:14px; }
+  .finder .f.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .chip.use { border-color:var(--gold); }
+  th.s { cursor:pointer; }
   footer { color:var(--dim); font-size:13px; padding:30px 0 50px; }
   @media (max-width:700px) { .stages { grid-template-columns:repeat(2,1fr); } .hide-m { display:none; } }
 </style>
@@ -76,6 +85,13 @@
 <div id="bestWrap" hidden><h2>Best by voice</h2>
 <p class="sub">The top unbeaten Arena voice for each voice gender. A model can lead with one voice and not the other.</p>
 <div class="best" id="best"></div></div>
+
+<div id="finderWrap" hidden><h2>Find a voice by type</h2>
+<p class="sub">Every voice still in (passed Screening, not knocked out in the Arena), with an objective profile measured
+from its clips (no listening involved) and the annotator's own notes on what it suits. Click a heading to sort.
+<span id="profLegend"></span></p>
+<div class="finder" id="finderFilters"></div>
+<table id="finder"></table></div>
 
 <h2>Arena ranking</h2>
 <p class="sub" id="arenaSub"></p>
@@ -136,7 +152,7 @@ const cat = (m) => (C.categories || {})[m.provenance?.category] || m.provenance?
 // provenance.cost: {usd_per_1k_chars, basis, source, as_of, kind} (list price for APIs, compute estimate for self-hosted)
 const money = (v) => v == null ? "" : v < 0.001 ? "<$0.001" : "$" + (v < 0.01 ? v.toFixed(4) : v.toFixed(3));
 const costCell = (m) => { const c = m.provenance?.cost; return c ? `<span title="${esc(c.basis)} (${esc(c.kind)}, ${esc(c.as_of)})">${money(c.usd_per_1k_chars)}</span><div class="meta">${c.kind === "API list price" ? "API price" : "compute est."}</div>` : `<span class="meta">-</span>`; };
-const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta">${esc(m.provenance?.publisher || "")}${cat(m) ? " · " + esc(cat(m)) : ""} · ${esc(variant(m))}</div>`;
+const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta">${esc(m.provenance?.publisher || "")}${cat(m) ? " · " + esc(cat(m)) : ""} · ${esc(variant(m))}${m.profile?.wpm ? ` · ${Math.round(m.profile.wpm)} wpm` : ""}</div>`;
 
 (async function boot() {
   C = await fetch("config.json").then((r) => r.json());
@@ -149,8 +165,8 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
   const EV = await lines(C.evals_registry);
   const e = EV.find((x) => x.eval_id === C.eval_id) || EV[0];
   const A = (k) => lines(res(`annotations/${e.eval_id}/${k}.jsonl`));
-  const [data, screen, sv, pairs, pv, voice, va] = await Promise.all([fetch(e.data_json + "?t=" + Date.now()).then((r) => r.json()),
-    A("screen"), A("screen-voice"), A("pairs"), A("pairs-voice"), A("voice"), A("voice-applied")]);
+  const [data, screen, sv, pairs, pv, voice, va, vc] = await Promise.all([fetch(e.data_json + "?t=" + Date.now()).then((r) => r.json()),
+    A("screen"), A("screen-voice"), A("pairs"), A("pairs-voice"), A("voice"), A("voice-applied"), A("voice-character")]);
   D = data; BASE = e.data_json.replace(/[^/]*$/, "");
   const M = Object.fromEntries(D.models.map((m) => [m.slug, m]));
 
@@ -221,6 +237,42 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
     }).join("");
   }
 
+  const first = (m) => Object.keys(m.clips || {}).sort()[0];
+  // Find a voice by type: everything still in, with profile and the annotator's character notes
+  const VC = {}; for (const r of [...vc].sort((a, b) => (a.saved || "").localeCompare(b.saved || ""))) if (r.run) VC[r.run] = r;
+  const live = D.models.filter((m) => status[m.slug] === "pass" && !lostTo[m.slug]);
+  if (live.some((m) => m.profile) || Object.keys(VC).length) {
+    $("finderWrap").hidden = false;
+    $("profLegend").innerHTML = C.profile_legend || "";
+    const F = { gender: "all", use: "all", sort: "arena", dir: 1 };
+    const uses = [...new Set(Object.values(VC).flatMap((r) => r.uses || []))].sort();
+    const genders = [...new Set(live.map((m) => m.run?.voice_gender).filter(Boolean))].sort();
+    const val = { wpm: (m) => m.profile?.wpm, pitch: (m) => m.profile?.f0_median_hz, into: (m) => m.profile?.f0_sd_st,
+      bright: (m) => m.profile?.centroid_hz, clar: (m) => m.profile?.hnr_db, arena: (m) => { const i = ranked.indexOf(m.slug); return i < 0 ? 999 : i; } };
+    const draw = () => {
+      $("finderFilters").innerHTML = [["gender", "all", "All voices"], ...genders.map((g) => ["gender", g, g[0].toUpperCase() + g.slice(1)])].map(([k, v, l]) => `<button class="f ${F[k] === v ? "on" : ""}" data-k="${k}" data-v="${esc(v)}">${esc(l)}</button>`).join("") +
+        (uses.length ? `<span class="meta"> Suits: </span>` + [["use", "all", "Anything"], ...uses.map((u) => ["use", u, u])].map(([k, v, l]) => `<button class="f ${F[k] === v ? "on" : ""}" data-k="${k}" data-v="${esc(v)}">${esc(l)}</button>`).join("") : "");
+      const rows = live.filter((m) => (F.gender === "all" || m.run?.voice_gender === F.gender) && (F.use === "all" || (VC[m.slug]?.uses || []).includes(F.use)))
+        .sort((a, b) => ((val[F.sort](a) ?? 1e9) - (val[F.sort](b) ?? 1e9)) * F.dir);
+      const P = (m) => m.profile || {}, L = (m) => P(m).labels || {};
+      const th = (k, l) => `<th class="s" data-s="${k}">${l}${F.sort === k ? (F.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+      $("finder").innerHTML = `<thead><tr><th></th><th>Voice</th>${th("arena", "Arena")}${th("wpm", "Words / min")}${th("pitch", "Pitch")}${th("into", "Intonation")}${th("bright", "Brightness")}${th("clar", "Clarity")}<th>Annotator's take</th></tr></thead><tbody>` +
+        (rows.map((m) => { const p = P(m), l = L(m), c = VC[m.slug];
+          return `<tr><td>${btn(m, C.rank_sentence && m.clips?.[C.rank_sentence] ? C.rank_sentence : first(m))}</td><td>${nameCell(m)}${(p.flags || []).map((f) => `<div class="meta">⚠ ${esc(f)}</div>`).join("")}</td>
+          <td class="n">${ranked.includes(m.slug) ? "unbeaten" : `<span class="meta">waiting</span>`}</td>
+          <td class="n">${p.wpm ? Math.round(p.wpm) : ""}<div class="meta">${esc(l.pace || "")}</div></td>
+          <td class="n">${p.f0_median_hz ? Math.round(p.f0_median_hz) + " Hz" : ""}<div class="meta">${esc(l.register || "")}</div></td>
+          <td class="n">${p.f0_sd_st != null ? p.f0_sd_st.toFixed(1) + " st" : ""}<div class="meta">${esc(l.intonation || "")}</div></td>
+          <td class="n">${p.centroid_hz ? p.centroid_hz + " Hz" : ""}<div class="meta">${esc(l.brightness || "")}</div></td>
+          <td class="n">${p.hnr_db != null ? p.hnr_db + " dB" : ""}<div class="meta">${esc(l.clarity || "")}</div></td>
+          <td>${(c?.uses || []).map((u) => `<span class="chip use">${esc(u)}</span>`).join("")}${(c?.character || []).map((u) => `<span class="chip obs">${esc(u)}</span>`).join("")}${c?.note ? `<div class="quote">“${esc(c.note)}”</div>` : ""}</td></tr>`; }).join("")
+        || `<tr><td colspan="9" class="meta">No voice matches.</td></tr>`) + "</tbody>";
+    };
+    $("finderFilters").onclick = (ev) => { const b = ev.target.closest(".f"); if (b) { F[b.dataset.k] = b.dataset.v; draw(); } };
+    $("finder").onclick = (ev) => { const t = ev.target.closest("th.s"); if (t) { F.dir = F.sort === t.dataset.s ? -F.dir : 1; F.sort = t.dataset.s; draw(); } };
+    draw();
+  }
+
   const waiting = D.models.filter((m) => status[m.slug] === "pass" && !ranked.includes(m.slug));
   $("waiting").innerHTML = waiting.length ? `<thead><tr><th></th><th>Voice</th><th>Screened on</th><th>$ / 1k chars</th><th class="hide-m">Observations</th></tr></thead><tbody>` +
     waiting.map((m) => `<tr><td>${btn(m, m._rows[0]?.sentence)}</td><td>${nameCell(m)}</td><td>${m._rows.map((r) => esc(r.sentence)).join(", ")}</td><td class="n">${costCell(m)}</td>
@@ -231,7 +283,6 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
     const g = {}; for (const m of list) (g[cat(m) || "Other"] ||= []).push(m);
     return Object.entries(g).sort().map(([k, ms]) => `<h3>${esc(k)}</h3><table><tbody>${ms.sort((a, b) => a.name.localeCompare(b.name)).map(fn).join("")}</tbody></table>`).join("") || `<p class="meta">None.</p>`;
   };
-  const first = (m) => Object.keys(m.clips || {}).sort()[0];
   $("pending").innerHTML = groups(D.models.filter((m) => status[m.slug] === "pending"), (m) => `<tr><td style="width:46px">${btn(m, first(m))}</td><td>${nameCell(m)}</td><td class="n" style="width:110px">${costCell(m)}</td></tr>`);
   $("out").innerHTML = groups(D.models.filter((m) => status[m.slug] === "out"), (m) => {
     const f = m._fail, words = (said[m.slug + "|" + f.sentence] || [])[0] || f.note || "";

@@ -139,6 +139,12 @@ Bradley-Terry fit, and votes across brackets are left out).
 If the clip manifest gives runs a `run.voice_gender` (`female` / `male`), every row is tagged with it and a **Best by
 voice** panel shows the top unbeaten Arena voice per gender (a voice that is out never counts), or how many of that
 gender are still waiting. Give the same model a second voice as its own run (e.g. `<model>-male`) to rank it separately.
+**Find a voice by type:** if runs carry a `profile` in the clip manifest (measured from the clips, no listening:
+`wpm`, `f0_median_hz`, `f0_sd_st`, `centroid_hz`, `hnr_db`, `labels` {register, intonation, brightness, clarity, pace},
+`flags`), every voice still in gets a row with those measurements, filterable by gender and sortable by column. The
+annotator's own view sits beside them, from `annotations/<eval_id>/voice-character.jsonl`
+(`tts-voice-character/1`: `run`, `uses[]` such as audiobooks or podcasts, `avoid[]`, `character[]`, `note`; the
+latest row per run wins), with a filter by use. `profile_legend` (HTML) in the config explains the columns.
 Example: [danielrosehill/Hebrew-TTS-Leaderboard](https://huggingface.co/spaces/danielrosehill/Hebrew-TTS-Leaderboard).
 
 ### Results
