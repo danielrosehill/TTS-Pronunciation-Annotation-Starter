@@ -77,7 +77,7 @@ There are two ways through:
   2. Any clip with a head-to-head loss is knocked out, at once: the opening round skips pairs with a clip already out.
   3. The **leader** is the unbeaten clip with the most wins; Bradley–Terry breaks a tie between leaders. It then plays
      each unbeaten challenger it hasn't met.
-  4. A draw between unbeaten finalists gets one tie-break rematch.
+  4. Each unbeaten finalist that drew with the leader gets one tie-break rematch against it.
 
   A sentence is decided long before all n(n−1)/2 pairs have been voted. If every clip has a loss (a cycle), or the
   rematch also draws, Bradley–Terry decides.

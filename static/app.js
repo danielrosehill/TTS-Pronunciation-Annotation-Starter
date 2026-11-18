@@ -576,8 +576,10 @@ function scheduleIn(sid, items) {
   const unmet = unbeaten.filter((x) => x !== leader && !met.has(pairId(sid, leader, x)));
   if (unmet.length) { res.status = "playoff"; res.pairs = unmet.map((x) => sides(sid, leader, x)); res.total = res.done + res.pairs.length; return res; }
   if (unbeaten.length === 1) { res.status = "decided"; res.total = res.done; return res; }
-  const rival = unbeaten.find((x) => x !== leader); // unbeaten finalists that drew
-  if ((met.get(pairId(sid, leader, rival)) || 0) < 2) { res.status = "tiebreak"; res.pairs = [sides(sid, rival, leader)]; res.total = res.done + 1; return res; }
+  // Every unbeaten finalist that drew with the leader gets one tie-break rematch (fixed 2026-11-18: only the first
+  // one did, so a bracket stopped at "tie" while other finalists still owed theirs).
+  const rivals = unbeaten.filter((x) => x !== leader && (met.get(pairId(sid, leader, x)) || 0) < 2);
+  if (rivals.length) { res.status = "tiebreak"; res.pairs = rivals.map((x) => sides(sid, x, leader)); res.total = res.done + res.pairs.length; return res; }
   res.status = "tie"; res.total = res.done; return res;
 }
 // Bradley-Terry by minorization-maximization; a tie counts half a win to each side; a small symmetric prior keeps
