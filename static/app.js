@@ -106,6 +106,13 @@ async function loadEval() {
   S.screen = new Map(); sc.forEach(applyScreenRow);
   S.pairs = pr;
   for (const item of outbox()) if (item.eval_id === S.evalId) (item.kind === "screen" ? applyScreenRow(item.row) : S.pairs.push(item.row));
+  // Rounds (Daniel, 2026-11-18: generate in rounds, only for survivors). Items may carry `round`; the queue then holds
+  // only the chosen round's items (default: the latest), so earlier or unused items are never served again.
+  const rounds = [...new Set(S.data.sentences.map((s) => s.round).filter((r) => r != null))].sort((a, b) => a - b);
+  $("roundPickWrap").hidden = !rounds.length;
+  $("roundPick").innerHTML = rounds.map((r) => `<option value="${r}">Round ${r}: ${esc(S.data.sentences.filter((s) => s.round === r).map((s) => s.id).join(", "))}</option>`).join("") +
+    (rounds.length ? `<option value="all">Every item</option>` : "");
+  if (rounds.length) $("roundPick").value = String(LS("round") && (LS("round") === "all" || rounds.includes(Number(LS("round")))) ? LS("round") : rounds[rounds.length - 1]);
   $("voicePick").innerHTML = runs().map((m) => `<option value="${esc(m.slug)}">${esc(m.name)}</option>`).join("");
   if (S.voice && runBy(S.voice)) $("voicePick").value = S.voice;
   S.rank.history = [];
@@ -120,10 +127,11 @@ function syncModeUi() {
 // Runs with at least one Fail anywhere in the screen. Computed once per queue build, so a run failed mid-session drops
 // out from the next sentence on, not from under the current one.
 function failedRuns() { return new Set([...S.screen.values()].filter((r) => r.verdict === "fail").map((r) => r.run)); }
+const inRound = (s) => !S.round || S.round === "all" || s.round === Number(S.round);
 function buildQueue() {
   const q = [];
   if (S.mode === "compare") {
-    for (const s of S.data.sentences) {
+    for (const s of S.data.sentences.filter(inRound)) {
       // Daniel, 2026-11-18: "I don't need to keep hearing the failure voices because we know that they fail."
       let rs = runs().filter((m) => m.clips[s.id] && (!S.skipFailed || !failedRuns().has(m.slug) || S.screen.has(key(m.slug, s.id)))).map((m) => m.slug);
       if (S.blind) rs = shuffled(rs, S.evalId + s.id);
@@ -131,7 +139,7 @@ function buildQueue() {
     }
   } else {
     const m = runBy(S.voice) || runs()[0]; S.voice = m.slug;
-    const ss = S.data.sentences.filter((s) => m.clips[s.id]);
+    const ss = S.data.sentences.filter((s) => inRound(s) && m.clips[s.id]);
     ss.forEach((s, i) => q.push({ run: m.slug, sid: s.id, group: m.slug, idx: i, of: ss.length + 1 }));
     q.push({ run: m.slug, sid: "overall", group: m.slug, idx: ss.length, of: ss.length + 1 });
   }
@@ -717,6 +725,7 @@ function toast(msg, ms = 1500) { const t = $("toast"); t.textContent = msg; t.hi
 function start() {
   S.mode = document.querySelector("input[name=mode]:checked").value;
   S.blind = $("blind").checked; S.skipFailed = $("skipFailed").checked; S.voice = $("voicePick").value;
+  S.round = $("roundPickWrap").hidden ? null : $("roundPick").value; LS("round", S.round);
   LS("eval", S.evalId); LS("mode", S.mode); LS("blind", S.blind); LS("skipFailed", S.skipFailed); LS("voice", S.voice);
   buildQueue();
   const saved = LS("pos." + S.evalId + "." + S.mode + (S.mode === "voice" ? "." + S.voice : ""));
