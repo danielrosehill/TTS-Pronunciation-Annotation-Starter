@@ -187,7 +187,17 @@ function lastGender(run) {
   for (const r of S.screen.values()) if (r.run === run && r.gender && (!best || (r.saved || "") > (best.saved || ""))) best = r;
   return best?.gender || null;
 }
+// Nothing (left) to screen: say so and point to the Arena (Daniel, 2026-11-18: moving on to ranking "is not obvious").
+function showScreenDone() {
+  $("audio").pause();
+  $("clipArea").hidden = true; $("screenDone").hidden = false;
+  const n = survivors().size;
+  $("screenDoneText").textContent = `${n} voice${n === 1 ? "" : "s"} passed screening and ${n === 1 ? "is" : "are"} ready to meet head to head. New candidates appear here when they arrive.`;
+  $("toArena").textContent = `Go to the Arena (${n} voices) ▶`;
+}
 function openClip(pos, play = true) {
+  if (!S.queue.length) { showScreenDone(); return; }
+  $("clipArea").hidden = false; $("screenDone").hidden = true;
   S.pos = Math.max(0, Math.min(S.queue.length - 1, pos));
   const c = cur(), n = S.screen.get(key(c.run, c.sid));
   S.draft = n ? { verdict: n.verdict || null, fail_reasons: [...(n.fail_reasons || [])], word_issues: JSON.parse(JSON.stringify(n.word_issues || [])),
@@ -443,7 +453,7 @@ function go(delta, doSave) {
     const i = S.queue.findIndex((x) => x.group === nx.group);
     if (i >= 0) { openClip(i); return; }
   }
-  if (S.pos + delta >= S.queue.length) { toast("That was the last clip 🎉 Next: 2 · Rank", 2500); renderClip(); return; }
+  if (S.pos + delta >= S.queue.length) { showScreenDone(); return; }
   openClip(S.pos + delta);
 }
 
@@ -725,13 +735,14 @@ function csvCell(v) { const s = typeof v === "object" && v !== null ? JSON.strin
 function renderBoard() {
   if (!S.data) { $("boardCols").innerHTML = `<div class="muted">Pick an evaluation first.</div>`; return; }
   const f = failedRuns(), sv = survivors(), rows = [...S.screen.values()];
-  const col = (title, list, why) => `<div class="col"><h3>${title} <span class="muted">${list.length}</span></h3>${list.map((m) => `<div class="v">${esc(m.name)}${why ? `<div class="why">${why(m)}</div>` : ""}</div>`).join("") || `<div class="muted">none</div>`}</div>`;
+  const col = (title, list, why, go) => `<div class="col"><h3>${title} <span class="muted">${list.length}</span></h3>${go && list.length ? `<button class="primary go" data-go="${go[0]}">${go[1]}</button>` : ""}${list.map((m) => `<div class="v">${esc(m.name)}${why ? `<div class="why">${why(m)}</div>` : ""}</div>`).join("") || `<div class="muted">none</div>`}</div>`;
   const out = runs().filter((m) => f.has(m.slug)), arena = runs().filter((m) => sv.has(m.slug)), screening = runs().filter((m) => !f.has(m.slug) && !sv.has(m.slug));
   const failWhy = (m) => { const r = rows.filter((x) => x.run === m.slug && x.verdict === "fail").sort((a, b) => a.sentence.localeCompare(b.sentence))[0];
     return r ? `${esc(r.sentence)}: ${esc((r.fail_reasons || []).join(", "))}` : ""; };
   const passWhy = (m) => { const n = rows.filter((x) => x.run === m.slug && x.verdict === "pass").length; const o = [...new Set(rows.filter((x) => x.run === m.slug).flatMap((x) => x.observations || []))];
     return `${n} clip${n === 1 ? "" : "s"} passed${o.length ? " · " + esc(o.join(", ")) : ""}`; };
-  $("boardCols").innerHTML = col("1 · Screening", screening, () => "waiting for a first listen") + col("2 · Arena", arena, passWhy) + col("Out", out, failWhy);
+  $("boardCols").innerHTML = col("1 · Screening", screening, () => "waiting for a first listen", ["rate", "Screen these ▶"]) +
+    col("2 · Arena", arena, passWhy, ["rank", "Go to the Arena ▶"]) + col("Out", out, failWhy);
 }
 function tab(t) {
   ["start", "board", "rate", "rank", "results"].forEach((x) => ($(x).hidden = x !== t));
@@ -808,6 +819,9 @@ function wire() {
   $("popRemove").addEventListener("click", removeTag);
   $("pop").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches("input")) { e.preventDefault(); savePop(); } });
   $("save").addEventListener("click", () => go(1, true));
+  $("toArena").addEventListener("click", () => tab("rank"));
+  $("toBoard").addEventListener("click", () => tab("board"));
+  $("boardCols").addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { if (b.dataset.go === "rate") start(); else tab(b.dataset.go); } });
   $("vnBtn").addEventListener("click", vnToggle);
   $("next").addEventListener("click", () => go(1, false));
   $("prev").addEventListener("click", () => go(-1, false));

@@ -49,6 +49,12 @@
   </section>
 
   <section id="rate" hidden>
+    <div id="screenDone" class="card done" hidden>
+      <h2>Screening done for this round ✓</h2>
+      <p id="screenDoneText"></p>
+      <div class="actions"><button id="toArena" class="primary big">Go to the Arena ▶</button><button id="toBoard" class="ghost">See the board</button></div>
+    </div>
+    <div id="clipArea">
     <div class="where">
       <div id="whereText"></div>
       <div class="jump"><select id="groupPick" title="Jump to"></select></div>
@@ -103,6 +109,7 @@
       <button id="next" class="ghost">Skip ▶</button>
     </div>
     <div id="state" class="state"></div>
+      </div>
   </section>
 
   <section id="rank" hidden>

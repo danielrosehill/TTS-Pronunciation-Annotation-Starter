@@ -232,3 +232,6 @@ body.rtl .syls { direction: ltr; }
 .board .v { border-top: 1px solid var(--line); padding: 6px 0; font-size: 15px; }
 .board .why { color: var(--dim); font-size: 13px; }
 @media (max-width: 760px) { .board { grid-template-columns: 1fr; } }
+
+.done h2 { margin: 4px 0 8px; } .done p { color: var(--dim); }
+.board .go { margin-top: 10px; width: 100%; }
