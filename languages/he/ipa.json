@@ -34,7 +34,7 @@
     "k",
     "h",
     "silent",
-    "ħ is the Mizrahi pharyngeal for ח: a regional variant, not standard Israeli"
+    "ħ (Mizrahi pharyngeal for ח): a regional variant, fails against the neutral Israeli standard"
    ]
   },
   {
@@ -45,7 +45,7 @@
    "example": "רֶגַע ˈʁeɡa",
    "common_errors": [
     "ɹ (English r)",
-    "r (trilled: Mizrahi or older variant)"
+    "r (trilled: Mizrahi or older variant; fails against the neutral standard)"
    ]
   },
   {
@@ -127,7 +127,7 @@
    "sounds_like": "catch in the throat, often dropped",
    "example": "אֲנִי ʔaˈni",
    "common_errors": [
-    "ʕ (Arabic ayin: a Mizrahi variant for ע)",
+    "ʕ (pharyngeal ayin: Mizrahi variant for ע; fails against the neutral standard)",
     "a hard ʔ where speech drops it is a style problem, not an error"
    ]
   },
