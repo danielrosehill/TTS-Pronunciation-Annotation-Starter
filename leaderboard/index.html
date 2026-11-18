@@ -164,12 +164,17 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
   const bt = btFit(votes, ranked);
   ranked.sort((a, b) => bt[b] - bt[a]);
   const lo = Math.min(...ranked.map((s) => bt[s])), hi = Math.max(...ranked.map((s) => bt[s]));
+  // Playoff rule (as in the annotation app): a head-to-head loss puts a voice out; unbeaten voices are still in.
+  const lostTo = {}; for (const v of [...votes].sort((a, b) => (a.saved || "").localeCompare(b.saved || ""))) {
+    if (v.outcome === "left" && !lostTo[v.right]) lostTo[v.right] = v.left;
+    if (v.outcome === "right" && !lostTo[v.left]) lostTo[v.left] = v.right; }
+  ranked.sort((a, b) => (!!lostTo[a] - !!lostTo[b]) || (bt[b] - bt[a]));
   const rs = C.rank_sentence || votes[0]?.sentence;
   const sent = D.sentences.find((s) => s.id === rs);
   $("arenaSub").innerHTML = `Blind A vs B on ${sent ? `the round-${esc(sent.round || 2)} item <b>${esc(rs)}</b>` : "the Arena item"}, ${votes.length} comparison${votes.length === 1 ? "" : "s"} so far. ` +
-    `Cost is per 1,000 characters of Hebrew as of the date on hover: list price for APIs, warm Modal compute for self-hosted models. Score is Bradley-Terry strength on an Elo-like scale (1000 = average of those ranked); with this few votes, read the order, not the gaps.` +
+    `Cost is per 1,000 characters of Hebrew as of the date on hover: list price for APIs, warm Modal compute for self-hosted models. Unbeaten voices are listed first (a head-to-head loss puts a voice out); within each group, by Bradley-Terry strength on an Elo-like scale (1000 = average of those ranked); with this few votes, read the order, not the gaps.` +
     (sent ? `<details style="margin-top:6px"><summary>The text</summary><div class="he">${esc(sent.text_nikud || sent.text)}</div><div class="meta">${esc(sent.english || "")}</div></details>` : "");
-  $("arena").innerHTML = `<thead><tr><th>#</th><th></th><th>Voice</th><th>Score</th><th>W–T–L</th><th>$ / 1k chars</th><th class="hide-m">Why it won or lost (annotator)</th></tr></thead><tbody>` +
+  $("arena").innerHTML = `<thead><tr><th>#</th><th></th><th>Voice</th><th>Score</th><th>Status</th><th>W–T–L</th><th>$ / 1k chars</th><th class="hide-m">Why it won or lost (annotator)</th></tr></thead><tbody>` +
     ranked.map((s, i) => {
       const m = M[s], mine = votes.filter((v) => v.left === s || v.right === s);
       const w = mine.filter((v) => (v.outcome === "left" && v.left === s) || (v.outcome === "right" && v.right === s)).length, t = mine.filter((v) => v.outcome === "tie").length;
@@ -179,7 +184,7 @@ const nameCell = (m) => `<div class="name">${esc(m.name)}</div><div class="meta"
       }).join("");
       return `<tr><td class="rank ${i ? "" : "r1"}">${i + 1}</td><td>${btn(m, rs)}</td><td>${nameCell(m)}</td>
         <td class="n">${bt[s]}<div class="bar" style="width:${hi > lo ? 20 + 80 * (bt[s] - lo) / (hi - lo) : 60}px"></div></td>
-        <td class="n">${w}–${t}–${mine.length - w - t}</td><td class="n">${costCell(m)}</td><td class="hide-m">${why}</td></tr>`;
+        <td>${lostTo[s] ? `<span class="chip bad">out</span><div class="meta">lost to ${esc(M[lostTo[s]]?.name || lostTo[s])}</div>` : `<span class="chip" style="border-color:var(--good);color:var(--good)">unbeaten</span>`}</td><td class="n">${w}–${t}–${mine.length - w - t}</td><td class="n">${costCell(m)}</td><td class="hide-m">${why}</td></tr>`;
     }).join("") + "</tbody>";
 
   const waiting = D.models.filter((m) => status[m.slug] === "pass" && !ranked.includes(m.slug));
