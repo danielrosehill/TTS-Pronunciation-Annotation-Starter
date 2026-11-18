@@ -56,6 +56,10 @@
           "type": "string",
           "description": "Scheduler stage when it was served: opening, playoff, tiebreak or voting (all pairs)"
         },
+        "bracket": {
+          "type": "string",
+          "description": "Arena bracket the pair was played in: the value of rank.group_by (e.g. voice_gender) shared by both runs"
+        },
         "note": {
           "type": "string"
         }
